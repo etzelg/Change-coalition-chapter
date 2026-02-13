@@ -246,13 +246,13 @@ print(summary_stats['party_composition'].to_string(index=False))
 # ==============================================================================
 
 print("\nSaving cleaned dataset...")
-analysis_data.to_pickle("analysis_data.pkl")
-print("Cleaned data saved as 'analysis_data.pkl'")
+analysis_data.to_pickle("output/analysis_data.pkl")
+print("Cleaned data saved as 'output/analysis_data.pkl'")
 
 # Also save summary statistics for documentation
-with open("summary_stats_stage1.pkl", "wb") as f:
+with open("output/summary_stats_stage1.pkl", "wb") as f:
     pickle.dump(summary_stats, f)
-print("Summary statistics saved as 'summary_stats_stage1.pkl'")
+print("Summary statistics saved as 'output/summary_stats_stage1.pkl'")
 
 # ==============================================================================
 # 6. CREATE MARKDOWN DOCUMENTATION
@@ -361,9 +361,9 @@ Proceed to Stage 2: Time Series Visualizations
 """
 
 # Write markdown file
-with open("data_summary_stage1.md", "w") as f:
+with open("output/data_summary_stage1.md", "w") as f:
     f.write(md_content)
-print("Documentation saved as 'data_summary_stage1.md'")
+print("Documentation saved as 'output/data_summary_stage1.md'")
 
 print("\n=== STAGE 1 COMPLETE ===")
 print("All files created successfully!")

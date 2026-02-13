@@ -5,7 +5,8 @@ Stage 2: Time Series Visualizations
 ==============================================================================
 Purpose: Create time series plots showing populist rhetoric trends over time
 Input: analysis_data.pkl (from Stage 1)
-Outputs: 3 PNG plots + markdown documentation
+Outputs: 2 PNG plots (overall + by party) + markdown documentation
+Note: Shows both election (March 23) and coalition (June 13) dates
 ==============================================================================
 """
 
@@ -43,7 +44,7 @@ colors = {
 # ==============================================================================
 
 print("Loading cleaned dataset...")
-analysis_data = pd.read_pickle("analysis_data.pkl")
+analysis_data = pd.read_pickle("output/analysis_data.pkl")
 print(f"Loaded {len(analysis_data)} observations\n")
 
 # ==============================================================================
@@ -68,17 +69,12 @@ weekly_by_party = analysis_data.groupby(['week_from_cutoff', 'party_group']).agg
 weekly_by_party.columns = ['week_from_cutoff', 'party_group', 'populist_tweets', 'total_tweets', 'prop_populist', 'week_start']
 print(f"By party: {len(weekly_by_party)} party-week observations")
 
-# 2.3 By new24 status
-weekly_by_new24 = analysis_data.groupby(['week_from_cutoff', 'new24']).agg({
-    'pop': ['sum', 'count', 'mean'],
-    'day': 'min'
-}).reset_index()
-weekly_by_new24.columns = ['week_from_cutoff', 'new24', 'populist_tweets', 'total_tweets', 'prop_populist', 'week_start']
-weekly_by_new24['legislator_type'] = weekly_by_new24['new24'].map({
-    True: 'New Legislator',
-    False: 'Continuing Legislator'
-})
-print(f"By new24: {len(weekly_by_new24)} legislator-type-week observations\n")
+# Calculate week numbers for election date (March 23, 2021)
+election_date = pd.to_datetime("2021-03-23")
+cutoff_date = pd.to_datetime("2021-06-13")
+election_week = int((election_date - cutoff_date).days / 7)
+print(f"Election date week: {election_week}")
+print(f"Coalition date week: 0\n")
 
 # ==============================================================================
 # 3. PLOT 1: OVERALL TREND
@@ -100,13 +96,11 @@ rolling_mean = weekly_overall_sorted['prop_populist'].rolling(window=window, cen
 ax.plot(weekly_overall_sorted['week_from_cutoff'], rolling_mean,
         linewidth=2.5, color=colors['main'], label=f'{window}-week rolling average')
 
-# Add vertical line at cutoff
-ax.axvline(x=0, color=colors['cutoff'], linestyle='--', linewidth=2,
-           label='Cutoff (June 13, 2021)')
-
-# Add shaded regions for pre/post
-ax.axvspan(weekly_overall['week_from_cutoff'].min(), 0, alpha=0.05, color='blue', label='Pre-cutoff')
-ax.axvspan(0, weekly_overall['week_from_cutoff'].max(), alpha=0.05, color='red', label='Post-cutoff')
+# Add vertical lines for both dates
+ax.axvline(x=election_week, color='#9B59B6', linestyle=':', linewidth=2.5,
+           label='Election (March 23, 2021)', alpha=0.8)
+ax.axvline(x=0, color=colors['cutoff'], linestyle='--', linewidth=2.5,
+           label='Coalition (June 13, 2021)', alpha=0.8)
 
 # Labels and formatting
 ax.set_xlabel('Weeks from Cutoff (June 13, 2021)', fontweight='bold')
@@ -119,10 +113,10 @@ ax.grid(True, alpha=0.3)
 ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: f'{y:.1%}'))
 
 plt.tight_layout()
-plt.savefig('plot1_overall_trend.png', dpi=300, bbox_inches='tight')
+plt.savefig('output/plot1_overall_trend.png', dpi=300, bbox_inches='tight')
 plt.close()
 
-print("✓ Plot 1 saved as 'plot1_overall_trend.png'\n")
+print("✓ Plot 1 saved as 'output/plot1_overall_trend.png'\n")
 
 # ==============================================================================
 # 4. PLOT 2: BY PARTY GROUP
@@ -146,12 +140,14 @@ for party in ['Likud', 'PRRPs']:
     ax.plot(party_data['week_from_cutoff'], rolling_mean,
             linewidth=2.5, color=colors[party], label=party)
 
-# Add vertical line at cutoff
-ax.axvline(x=0, color=colors['cutoff'], linestyle='--', linewidth=2,
-           label='Cutoff (June 13, 2021)')
+# Add vertical lines for both dates
+ax.axvline(x=election_week, color='#9B59B6', linestyle=':', linewidth=2.5,
+           label='Election (March 23)', alpha=0.8)
+ax.axvline(x=0, color=colors['cutoff'], linestyle='--', linewidth=2.5,
+           label='Coalition (June 13)', alpha=0.8)
 
 # Labels and formatting
-ax.set_xlabel('Weeks from Cutoff (June 13, 2021)', fontweight='bold')
+ax.set_xlabel('Weeks from Coalition Cutoff (June 13, 2021)', fontweight='bold')
 ax.set_ylabel('Proportion of Populist Tweets', fontweight='bold')
 ax.set_title('Populist Rhetoric Over Time: By Party Group', fontweight='bold', pad=20)
 ax.legend(loc='best', frameon=True, fancybox=True, shadow=True)
@@ -161,53 +157,12 @@ ax.grid(True, alpha=0.3)
 ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: f'{y:.1%}'))
 
 plt.tight_layout()
-plt.savefig('plot2_by_party.png', dpi=300, bbox_inches='tight')
+plt.savefig('output/plot2_by_party.png', dpi=300, bbox_inches='tight')
 plt.close()
 
-print("✓ Plot 2 saved as 'plot2_by_party.png'\n")
+print("✓ Plot 2 saved as 'output/plot2_by_party.png'\n")
 
-# ==============================================================================
-# 5. PLOT 3: BY NEW24 STATUS
-# ==============================================================================
-
-print("Creating Plot 3: Trend by legislator type (New vs Continuing)...")
-
-fig, ax = plt.subplots(figsize=(12, 6))
-
-# Plot for each legislator type
-for new24_val, leg_type, color_key in [(True, 'New Legislator', 'new'),
-                                        (False, 'Continuing Legislator', 'continuing')]:
-    type_data = weekly_by_new24[weekly_by_new24['new24'] == new24_val].sort_values('week_from_cutoff')
-
-    # Scatter points
-    ax.scatter(type_data['week_from_cutoff'],
-               type_data['prop_populist'],
-               alpha=0.3, s=20, color=colors[color_key])
-
-    # Rolling average
-    rolling_mean = type_data['prop_populist'].rolling(window=window, center=True).mean()
-    ax.plot(type_data['week_from_cutoff'], rolling_mean,
-            linewidth=2.5, color=colors[color_key], label=leg_type)
-
-# Add vertical line at cutoff
-ax.axvline(x=0, color=colors['cutoff'], linestyle='--', linewidth=2,
-           label='Cutoff (June 13, 2021)')
-
-# Labels and formatting
-ax.set_xlabel('Weeks from Cutoff (June 13, 2021)', fontweight='bold')
-ax.set_ylabel('Proportion of Populist Tweets', fontweight='bold')
-ax.set_title('Populist Rhetoric Over Time: By Legislator Type', fontweight='bold', pad=20)
-ax.legend(loc='best', frameon=True, fancybox=True, shadow=True)
-ax.grid(True, alpha=0.3)
-
-# Format y-axis as percentage
-ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: f'{y:.1%}'))
-
-plt.tight_layout()
-plt.savefig('plot3_by_new24.png', dpi=300, bbox_inches='tight')
-plt.close()
-
-print("✓ Plot 3 saved as 'plot3_by_new24.png'\n")
+# Plot 3 removed - focusing on overall and party trends only
 
 # ==============================================================================
 # 6. CREATE MARKDOWN DOCUMENTATION
@@ -224,18 +179,22 @@ md_content = f"""# Stage 2: Time Series Visualizations
 
 **Date:** {datetime.now().strftime("%B %d, %Y")}
 
-**Purpose:** Visualize trends in populist rhetoric over time around the government coalition change.
+**Purpose:** Visualize trends in populist rhetoric over time, showing both critical dates.
 
 ---
 
 ## Overview
 
-This analysis examines temporal trends in populist tweets from Israeli legislators, focusing on the period before and after the government change on June 13, 2021.
+This analysis examines temporal trends in populist tweets from Israeli legislators, showing **two critical dates**:
+- **March 23, 2021**: Election date (dotted purple line)
+- **June 13, 2021**: Coalition formation (dashed black line)
 
-### Key Findings
+Visual inspection helps determine which event marks the true discontinuity in populist rhetoric.
 
-- **Pre-cutoff mean:** {pre_cutoff_mean:.2%} populist tweets
-- **Post-cutoff mean:** {post_cutoff_mean:.2%} populist tweets
+### Key Findings (Coalition Cutoff)
+
+- **Pre-coalition mean:** {pre_cutoff_mean:.2%} populist tweets
+- **Post-coalition mean:** {post_cutoff_mean:.2%} populist tweets
 - **Change:** {change_pct:+.1f}% increase
 
 ---
@@ -246,12 +205,14 @@ This analysis examines temporal trends in populist tweets from Israeli legislato
 
 ![Overall Trend](plot1_overall_trend.png)
 
-**Description:** Shows the overall proportion of populist tweets over time with a {window}-week rolling average. The vertical dashed line marks June 13, 2021 (government change).
+**Description:** Overall proportion of populist tweets over time with a {window}-week rolling average.
+- **Purple dotted line**: Election (March 23, 2021)
+- **Black dashed line**: Coalition formation (June 13, 2021)
 
 **Key observations:**
-- Clear visual distinction between pre- and post-cutoff periods
+- Visual inspection reveals timing of the change
 - Smoothed trend line shows the general trajectory
-- Weekly variation captured in scatter points
+- Both critical dates marked for comparison
 
 ---
 
@@ -259,25 +220,12 @@ This analysis examines temporal trends in populist tweets from Israeli legislato
 
 ![By Party Group](plot2_by_party.png)
 
-**Description:** Compares populist rhetoric trends between Likud (the dominant party) and PRRPs (Populist Radical Right Parties).
+**Description:** Compares populist rhetoric trends between Likud and PRRPs (Populist Radical Right Parties).
 
 **Key observations:**
-- Separate trends for Likud and PRRPs coalition members
-- Both groups show temporal patterns around the cutoff
+- Differential timing of changes between party groups possible
+- Both critical dates shown for each group
 - {window}-week rolling averages smooth out weekly volatility
-
----
-
-### Plot 3: By Legislator Type (New vs Continuing)
-
-![By Legislator Type](plot3_by_new24.png)
-
-**Description:** Compares trends between new legislators (elected in 2021) and continuing legislators.
-
-**Key observations:**
-- Differential trends between new and continuing legislators
-- New legislators may show different rhetorical patterns
-- Both groups' trends are smoothed with {window}-week rolling averages
 
 ---
 
@@ -285,24 +233,27 @@ This analysis examines temporal trends in populist tweets from Israeli legislato
 
 - **Total observations:** {len(analysis_data):,}
 - **Time span:** {len(weekly_overall)} weeks
-- **Weeks before cutoff:** {(weekly_overall['week_from_cutoff'] < 0).sum()}
-- **Weeks after cutoff:** {(weekly_overall['week_from_cutoff'] >= 0).sum()}
+- **Election week:** {election_week} (March 23, 2021)
+- **Coalition week:** 0 (June 13, 2021)
 - **Smoothing method:** {window}-week rolling average (centered)
 
 ---
 
 ## Technical Details
 
+**Critical dates:**
+- **Election**: March 23, 2021 (week {election_week})
+- **Coalition**: June 13, 2021 (week 0, reference point)
+
 **Visualization settings:**
 - Resolution: 300 DPI
 - Format: PNG
 - Smoothing: {window}-week centered rolling average
-- Cutoff marked at week 0 (June 13, 2021)
+- Two vertical lines mark both critical dates
 
 **Data aggregation:**
-- Weekly aggregation by `week_from_cutoff`
+- Weekly aggregation by `week_from_cutoff` (relative to coalition date)
 - Proportion calculated as: populist_tweets / total_tweets
-- Separate aggregations for overall, by party_group, and by legislator type
 
 ---
 
@@ -310,23 +261,24 @@ This analysis examines temporal trends in populist tweets from Israeli legislato
 
 - **plot1_overall_trend.png**: Overall populist proportion trend
 - **plot2_by_party.png**: Trend comparison by party group
-- **plot3_by_new24.png**: Trend comparison by legislator type
 
 ---
 
 ## Next Steps
 
-Proceed to Stage 3: Before/After Statistical Comparison
+Proceed to Stage 3: Statistical tests for **both** cutoff dates to determine which hypothesis is supported.
 """
 
-with open("plots_stage2.md", "w") as f:
+with open("output/plots_stage2.md", "w") as f:
     f.write(md_content)
 
-print("Documentation saved as 'plots_stage2.md'")
+print("Documentation saved as 'output/plots_stage2.md'")
 
 print("\n=== STAGE 2 COMPLETE ===")
 print("All plots created successfully!")
-print(f"- plot1_overall_trend.png")
-print(f"- plot2_by_party.png")
-print(f"- plot3_by_new24.png")
+print(f"- plot1_overall_trend.png (shows both election + coalition dates)")
+print(f"- plot2_by_party.png (shows both election + coalition dates)")
 print(f"- plots_stage2.md")
+print(f"\nBoth critical dates visualized:")
+print(f"  - Election: March 23, 2021 (week {election_week}, purple dotted)")
+print(f"  - Coalition: June 13, 2021 (week 0, black dashed)")
