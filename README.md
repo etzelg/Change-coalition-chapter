@@ -26,6 +26,16 @@ This repository contains a complete analysis of populist rhetoric changes among 
 
 **Conclusion**: The **election date shows a stronger effect**, suggesting populist rhetoric changes are driven more by electoral incentives than coalition formation.
 
+### Party-Level Effects (Election Cutoff)
+
+**Likud:**
+- **Change: +128.8%** (3.63% → 8.31%)
+- Most dramatic increase in populist rhetoric
+
+**PRRPs (Populist Radical Right Parties):**
+- **Change: +46.4%** (3.77% → 5.51%)
+- More modest but still significant increase
+
 ---
 
 ## Repository Structure
@@ -37,17 +47,24 @@ This repository contains a complete analysis of populist rhetoric changes among 
 ├── 02_time_series_plots.R    # R: Time series visualizations
 ├── 03_before_after.py        # Python: Dual cutoff statistical analysis
 ├── 03_before_after.R         # R: Dual cutoff analysis
+├── 04_election_party_plot.py # Python: Standalone election party plot
 ├── causal7_dat.csv          # Raw data
 ├── output/                   # All analysis outputs
-│   ├── analysis_data.pkl              # Cleaned dataset
+│   ├── analysis_data.pkl              # Cleaned dataset (Python)
+│   ├── analysis_data.csv              # Cleaned dataset (for R)
 │   ├── data_summary_stage1.md         # Stage 1 documentation
 │   ├── summary_stats_stage1.pkl       # Stage 1 statistics
 │   ├── plot1_overall_trend.png        # Overall time series (both dates)
 │   ├── plot2_by_party.png             # By party time series (both dates)
 │   ├── plots_stage2.md                # Stage 2 documentation
-│   ├── plot_dual_cutoff_comparison.png # Four-panel comparison
-│   ├── dual_cutoff_analysis.md        # Stage 3 documentation
-│   └── dual_cutoff_results.pkl        # Complete statistical results
+│   ├── plot_dual_cutoff_comparison.png     # Python: 4-panel comparison
+│   ├── dual_cutoff_analysis.md        # Python: Stage 3 documentation
+│   ├── dual_cutoff_results.pkl        # Python: Complete statistical results
+│   ├── plot_dual_cutoff_comparison_R.png   # R: 4-panel comparison
+│   ├── dual_cutoff_analysis_R.md      # R: Stage 3 documentation
+│   ├── dual_cutoff_results.rds        # R: Complete statistical results
+│   ├── plot_election_party_standalone.png  # Standalone election plot
+│   └── election_party_plot.md         # Standalone plot documentation
 └── README.md                 # This file
 ```
 
@@ -76,6 +93,15 @@ This repository contains a complete analysis of populist rhetoric changes among 
 - Creates four-panel comparison visualization
 
 **Run**: `python3 03_before_after.py` or `Rscript 03_before_after.R`
+
+### Stage 4: Standalone Election Party Plot
+- Publication-ready focused plot showing ONLY election effects by party
+- Highlights dramatic Likud increase (+128.8%) vs moderate PRRPs increase (+46.4%)
+- Clean, single-panel design suitable for main text figures
+
+**Run**: `python3 04_election_party_plot.py`
+
+**Note**: R is not installed on this system. The R script (`03_before_after.R`) has been created and should be run on your local machine with R installed. The CSV data file has been prepared in `output/analysis_data.csv` for R to read.
 
 ---
 
