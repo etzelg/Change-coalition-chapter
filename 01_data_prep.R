@@ -4,6 +4,7 @@
 # Purpose: Load, clean, and prepare the dataset for analysis
 # Dataset: causal7_dat.csv
 # Date Range: 2020-01-01 onwards
+# Exclusion: "Israel Our Home" party excluded from all analysis
 # Cutoff Date: June 13, 2021 (government change)
 # ==============================================================================
 
@@ -61,6 +62,9 @@ analysis_data <- raw_data %>%
 
   # Filter: Keep only 2020-01-01 onwards
   filter(day >= as.Date("2020-01-01")) %>%
+
+  # Filter: Exclude "Israel Our Home" party
+  filter(party != "Israel Our Home") %>%
 
   # Create party_group variable
   mutate(party_group = if_else(party == "Likud", "Likud", "PRRPs")) %>%
@@ -279,7 +283,9 @@ md_content <- c(
   paste0("- **Original size:** ", nrow(raw_data), " observations"),
   paste0("- **Filtered size:** ", nrow(analysis_data), " observations"),
   paste0("- **Date range:** ", min(analysis_data$day), " to ", max(analysis_data$day)),
-  "- **Filter applied:** Data from 2020-01-01 onwards",
+  "- **Filters applied:** ",
+  "  - Data from 2020-01-01 onwards",
+  "  - **Excluded party:** Israel Our Home",
   "",
   "---",
   "",
