@@ -1,492 +1,249 @@
 # ==============================================================================
-# Stage 3: Before/After Statistical Comparison - DUAL CUTOFF ANALYSIS
+# Stage 3: Before/After Statistical Analysis — Election Cutoff (R)
 # ==============================================================================
-# Purpose: Compare populist rhetoric for TWO cutoff dates:
-#          1. Election (March 23, 2021)
-#          2. Coalition Formation (June 13, 2021)
-# Input: analysis_data.csv (from output/)
-# Outputs: Statistical tests for both hypotheses, comparison tables, plots
+# Comparison 1: ALL parties pre vs Likud + Religious Zionism post
+#               ("Radicalized and Radical Populism")
+# Comparison 2: Rightwards + Israel Our Home pre vs post
+#               ("PRRPs in Change Coalition")
+# 4 separate plots saved to output/
 # ==============================================================================
 
-# Load required packages
 library(tidyverse)
-library(effsize)  # For Cohen's d
-library(gridExtra)  # For multi-panel plots
-
-# Set options
+library(effsize)
 options(scipen = 999)
 
-# ==============================================================================
-# 1. LOAD DATA AND DEFINE CUTOFFS
-# ==============================================================================
+cat("=== STAGE 3: BEFORE/AFTER ANALYSIS (R) ===\n\n")
 
-cat("Loading cleaned dataset...\n")
-analysis_data <- read_csv("output/analysis_data.csv", show_col_types = FALSE)
-cat("Loaded", nrow(analysis_data), "observations\n\n")
+data <- read_csv("output/analysis_data.csv", show_col_types = FALSE)
+cat("Loaded", nrow(data), "rows\n\n")
 
-# Define both cutoff dates
-election_date <- as.Date("2021-03-23")
-coalition_date <- as.Date("2021-06-13")
+PRR_PRE_NAMES  <- c("bezalelsm","michalwoldiger","ofir_sofer","oritstrock")
+PRR_POST_NAMES <- c(PRR_PRE_NAMES, "rothmar","itamarbengvir")
 
-# Convert day to Date if needed
-analysis_data <- analysis_data %>%
-  mutate(day = as.Date(day))
+COL_PRE  <- "#3498db"
+COL_POST <- "#e74c3c"
 
-# Create indicators for both cutoffs
-analysis_data <- analysis_data %>%
-  mutate(
-    post_election = as.integer(day >= election_date),
-    post_coalition = as.integer(day >= coalition_date)
-  )
+# ── helpers ──────────────────────────────────────────────────────────────────
 
-cat("=== TWO CUTOFF DATES DEFINED ===\n")
-cat("Election date: March 23, 2021\n")
-cat("Coalition date: June 13, 2021\n\n")
+run_tests <- function(pre_vec, post_vec) {
+  tt  <- t.test(pre_vec, post_vec)
+  cd  <- cohen.d(pre_vec, post_vec)
+  ct  <- table(c(rep(0,length(pre_vec)), rep(1,length(post_vec))),
+               c(pre_vec, post_vec))
+  ch  <- chisq.test(ct)
+  n   <- sum(ct)
+  v   <- sqrt(ch$statistic / (n * (min(dim(ct)) - 1)))
 
-# ==============================================================================
-# 2. SUMMARY TABLES FOR BOTH CUTOFFS
-# ==============================================================================
-
-cat("=== GENERATING SUMMARY TABLES FOR BOTH CUTOFFS ===\n\n")
-
-results <- list()
-
-# Function to generate summaries for a given cutoff
-generate_summaries <- function(data, cutoff_var, cutoff_name) {
-  summaries <- list()
-
-  # Overall summary
-  overall <- data %>%
-    mutate(period = if_else(!!sym(cutoff_var) == 1,
-                            paste0("Post-", cutoff_name),
-                            paste0("Pre-", cutoff_name))) %>%
-    group_by(period) %>%
-    summarise(
-      total_tweets = n(),
-      populist_tweets = sum(pop),
-      mean_prop = mean(pop),
-      std_prop = sd(pop),
-      unique_legislators = n_distinct(screen_name),
-      .groups = "drop"
-    ) %>%
-    mutate(se_prop = std_prop / sqrt(total_tweets)) %>%
-    select(period, total_tweets, populist_tweets, mean_prop, se_prop, unique_legislators)
-
-  summaries$overall <- overall
-
-  # By party
-  party <- data %>%
-    mutate(period = if_else(!!sym(cutoff_var) == 1,
-                            paste0("Post-", cutoff_name),
-                            paste0("Pre-", cutoff_name))) %>%
-    group_by(period, party_group) %>%
-    summarise(
-      total_tweets = n(),
-      populist_tweets = sum(pop),
-      mean_prop = mean(pop),
-      std_prop = sd(pop),
-      unique_legislators = n_distinct(screen_name),
-      .groups = "drop"
-    ) %>%
-    mutate(se_prop = std_prop / sqrt(total_tweets)) %>%
-    select(period, party_group, total_tweets, populist_tweets, mean_prop, se_prop, unique_legislators)
-
-  summaries$party <- party
-
-  return(summaries)
+  list(t      = tt$statistic,
+       t_p    = tt$p.value,
+       pre_m  = mean(pre_vec),
+       post_m = mean(post_vec),
+       pct    = (mean(post_vec) - mean(pre_vec)) / mean(pre_vec) * 100,
+       d      = cd$estimate,
+       chi2   = ch$statistic,
+       chi_p  = ch$p.value,
+       v      = unname(v))
 }
 
-# Generate for both cutoffs
-cat("--- ELECTION CUTOFF (March 23, 2021) ---\n\n")
-election_summaries <- generate_summaries(analysis_data, "post_election", "Election")
-cat("Overall:\n")
-print(election_summaries$overall)
-cat("\nBy Party:\n")
-print(election_summaries$party)
-cat("\n")
-
-cat("--- COALITION CUTOFF (June 13, 2021) ---\n\n")
-coalition_summaries <- generate_summaries(analysis_data, "post_coalition", "Coalition")
-cat("Overall:\n")
-print(coalition_summaries$overall)
-cat("\nBy Party:\n")
-print(coalition_summaries$party)
-cat("\n")
-
-results$election$summaries <- election_summaries
-results$coalition$summaries <- coalition_summaries
-
-# ==============================================================================
-# 3. STATISTICAL TESTS FOR BOTH CUTOFFS
-# ==============================================================================
-
-cat("=== CONDUCTING STATISTICAL TESTS FOR BOTH CUTOFFS ===\n\n")
-
-# Function to run statistical tests
-run_statistical_tests <- function(data, cutoff_var, cutoff_name) {
-  test_results <- list()
-
-  # Two-sample t-test
-  pre_data <- data %>% filter(!!sym(cutoff_var) == 0) %>% pull(pop)
-  post_data <- data %>% filter(!!sym(cutoff_var) == 1) %>% pull(pop)
-
-  t_test <- t.test(pre_data, post_data)
-
-  # Cohen's d
-  cohens <- cohen.d(pre_data, post_data)
-
-  pre_mean <- mean(pre_data)
-  post_mean <- mean(post_data)
-  pct_change <- ((post_mean - pre_mean) / pre_mean) * 100
-
-  test_results$t_test <- list(
-    t_statistic = t_test$statistic,
-    p_value = t_test$p.value,
-    pre_mean = pre_mean,
-    post_mean = post_mean,
-    difference = post_mean - pre_mean,
-    pct_change = pct_change,
-    cohens_d = cohens$estimate,
-    effect_interpretation = ifelse(abs(cohens$estimate) < 0.5, "small",
-                                   ifelse(abs(cohens$estimate) < 0.8, "medium", "large"))
+bar_two_plot <- function(labels, pre_m, post_m, pre_se, post_se,
+                         title, stats_label) {
+  df <- tibble(
+    period = factor(c(labels[1], labels[2]), levels = c(labels[1], labels[2])),
+    mean   = c(pre_m, post_m),
+    se     = c(pre_se, post_se)
   )
-
-  # Chi-square test
-  contingency_table <- table(data[[cutoff_var]], data$pop)
-  chi_test <- chisq.test(contingency_table)
-
-  n <- sum(contingency_table)
-  cramers_v <- sqrt(chi_test$statistic / (n * (min(dim(contingency_table)) - 1)))
-
-  test_results$chi_square <- list(
-    chi2_statistic = chi_test$statistic,
-    p_value = chi_test$p.value,
-    degrees_of_freedom = chi_test$parameter,
-    cramers_v = cramers_v,
-    effect_interpretation = ifelse(cramers_v < 0.1, "small",
-                                   ifelse(cramers_v < 0.3, "medium", "large"))
-  )
-
-  return(test_results)
-}
-
-# Run tests for both cutoffs
-cat("--- ELECTION CUTOFF ---\n")
-election_tests <- run_statistical_tests(analysis_data, "post_election", "Election")
-cat(sprintf("t-test: t=%.4f, p=%.4e\n", election_tests$t_test$t_statistic, election_tests$t_test$p_value))
-cat(sprintf("  Pre: %.4f (%.2f%%)\n", election_tests$t_test$pre_mean, election_tests$t_test$pre_mean*100))
-cat(sprintf("  Post: %.4f (%.2f%%)\n", election_tests$t_test$post_mean, election_tests$t_test$post_mean*100))
-cat(sprintf("  Change: %+.2f%%\n", election_tests$t_test$pct_change))
-cat(sprintf("  Cohen's d: %.4f (%s)\n", election_tests$t_test$cohens_d, election_tests$t_test$effect_interpretation))
-cat(sprintf("Chi-square: χ²=%.4f, p=%.4e\n", election_tests$chi_square$chi2_statistic, election_tests$chi_square$p_value))
-cat(sprintf("  Cramér's V: %.4f (%s)\n", election_tests$chi_square$cramers_v, election_tests$chi_square$effect_interpretation))
-cat("\n")
-
-cat("--- COALITION CUTOFF ---\n")
-coalition_tests <- run_statistical_tests(analysis_data, "post_coalition", "Coalition")
-cat(sprintf("t-test: t=%.4f, p=%.4e\n", coalition_tests$t_test$t_statistic, coalition_tests$t_test$p_value))
-cat(sprintf("  Pre: %.4f (%.2f%%)\n", coalition_tests$t_test$pre_mean, coalition_tests$t_test$pre_mean*100))
-cat(sprintf("  Post: %.4f (%.2f%%)\n", coalition_tests$t_test$post_mean, coalition_tests$t_test$post_mean*100))
-cat(sprintf("  Change: %+.2f%%\n", coalition_tests$t_test$pct_change))
-cat(sprintf("  Cohen's d: %.4f (%s)\n", coalition_tests$t_test$cohens_d, coalition_tests$t_test$effect_interpretation))
-cat(sprintf("Chi-square: χ²=%.4f, p=%.4e\n", coalition_tests$chi_square$chi2_statistic, coalition_tests$chi_square$p_value))
-cat(sprintf("  Cramér's V: %.4f (%s)\n", coalition_tests$chi_square$cramers_v, coalition_tests$chi_square$effect_interpretation))
-cat("\n")
-
-results$election$tests <- election_tests
-results$coalition$tests <- coalition_tests
-
-# ==============================================================================
-# 4. COMPARISON VISUALIZATION
-# ==============================================================================
-
-cat("Creating comparison visualization...\n\n")
-
-colors_pre <- "#3498db"
-colors_post <- "#e74c3c"
-
-# Function to create bar plot
-create_comparison_plot <- function(data, title) {
-  ggplot(data, aes(x = period, y = mean_prop, fill = period)) +
-    geom_col(color = "black", linewidth = 0.8, alpha = 0.8) +
-    geom_errorbar(aes(ymin = mean_prop - 1.96 * se_prop,
-                      ymax = mean_prop + 1.96 * se_prop),
-                  width = 0.2, linewidth = 0.8) +
-    geom_text(aes(label = sprintf("%.2f%%", mean_prop * 100)),
-              vjust = -0.5, position = position_dodge(0.9),
-              size = 3, fontface = "bold") +
-    scale_fill_manual(values = c(colors_pre, colors_post)) +
-    scale_y_continuous(labels = scales::percent_format(accuracy = 0.1),
-                       expand = expansion(mult = c(0, 0.15))) +
-    labs(x = NULL, y = "Proportion of Populist Tweets", title = title) +
+  ggplot(df, aes(x = period, y = mean, fill = period)) +
+    geom_col(color="black", linewidth=1.1, alpha=0.88, width=0.5) +
+    geom_errorbar(aes(ymin=mean-1.96*se, ymax=mean+1.96*se),
+                  width=0.12, linewidth=0.9) +
+    geom_text(aes(label=scales::percent(mean, accuracy=0.01),
+                  y=mean+1.96*se+0.003),
+              fontface="bold", size=3.8, vjust=0) +
+    scale_fill_manual(values=c(COL_PRE, COL_POST), guide="none") +
+    scale_y_continuous(labels=scales::percent_format(accuracy=0.1),
+                       expand=expansion(mult=c(0,0.18))) +
+    labs(x=NULL, y="Proportion of Populist Tweets", title=title,
+         caption=stats_label) +
     theme_minimal() +
-    theme(
-      plot.title = element_text(face = "bold", hjust = 0.5, size = 12),
-      axis.title.y = element_text(face = "bold", size = 10),
-      axis.text = element_text(size = 9),
-      legend.position = "none",
-      panel.grid.major.x = element_blank()
-    )
+    theme(plot.title   = element_text(face="bold", size=13),
+          axis.title.y = element_text(face="bold"),
+          axis.text.x  = element_text(size=10),
+          panel.grid.major.x = element_blank(),
+          plot.caption = element_text(size=8, color="#555", face="italic"))
 }
 
-# Plot 1: Election overall
-plot1 <- create_comparison_plot(election_summaries$overall, "Election Cutoff: Overall")
+bar_grouped_plot <- function(parties, pre_v, post_v, pre_se, post_se,
+                              title, pct_ch, footnote = NULL) {
+  df <- tibble(
+    party  = rep(parties, each=2),
+    period = rep(c("Pre-election","Post-election"), length(parties)),
+    mean   = c(rbind(pre_v, post_v)),
+    se     = c(rbind(pre_se, post_se))
+  ) %>%
+    mutate(party  = factor(party,  levels=parties),
+           period = factor(period, levels=c("Pre-election","Post-election")))
 
-# Plot 2: Coalition overall
-plot2 <- create_comparison_plot(coalition_summaries$overall, "Coalition Cutoff: Overall")
+  p <- ggplot(df, aes(x=party, y=mean, fill=period)) +
+    geom_col(position=position_dodge(0.8), color="black",
+             linewidth=1.1, alpha=0.88, width=0.7) +
+    geom_errorbar(aes(ymin=mean-1.96*se, ymax=mean+1.96*se),
+                  position=position_dodge(0.8), width=0.18, linewidth=0.9) +
+    geom_text(aes(label=scales::percent(mean, accuracy=0.01),
+                  y=mean+1.96*se+0.003),
+              position=position_dodge(0.8), fontface="bold", size=3.5, vjust=0) +
+    scale_fill_manual(values=c("Pre-election"=COL_PRE,"Post-election"=COL_POST),
+                      name=NULL) +
+    scale_y_continuous(labels=scales::percent_format(accuracy=0.1),
+                       expand=expansion(mult=c(0,0.22))) +
+    labs(x=NULL, y="Proportion of Populist Tweets", title=title) +
+    theme_minimal() +
+    theme(plot.title   = element_text(face="bold", size=13),
+          axis.title.y = element_text(face="bold"),
+          axis.text.x  = element_text(size=11),
+          legend.position = "top",
+          panel.grid.major.x = element_blank())
 
-# Plot 3: Election by party
-plot3 <- election_summaries$party %>%
-  ggplot(aes(x = party_group, y = mean_prop, fill = period)) +
-  geom_col(position = position_dodge(0.8), color = "black",
-           linewidth = 0.8, alpha = 0.8, width = 0.7) +
-  geom_errorbar(aes(ymin = mean_prop - 1.96 * se_prop,
-                    ymax = mean_prop + 1.96 * se_prop),
-                position = position_dodge(0.8), width = 0.2, linewidth = 0.8) +
-  scale_fill_manual(values = c(colors_pre, colors_post)) +
-  scale_y_continuous(labels = scales::percent_format(accuracy = 0.1),
-                     expand = expansion(mult = c(0, 0.15))) +
-  labs(x = NULL, y = "Proportion of Populist Tweets",
-       title = "Election: By Party", fill = "Period") +
-  theme_minimal() +
-  theme(
-    plot.title = element_text(face = "bold", hjust = 0.5, size = 12),
-    axis.title.y = element_text(face = "bold", size = 10),
-    axis.text = element_text(size = 9),
-    legend.position = "bottom",
-    legend.title = element_text(face = "bold", size = 9),
-    panel.grid.major.x = element_blank()
-  )
-
-# Plot 4: Coalition by party
-plot4 <- coalition_summaries$party %>%
-  ggplot(aes(x = party_group, y = mean_prop, fill = period)) +
-  geom_col(position = position_dodge(0.8), color = "black",
-           linewidth = 0.8, alpha = 0.8, width = 0.7) +
-  geom_errorbar(aes(ymin = mean_prop - 1.96 * se_prop,
-                    ymax = mean_prop + 1.96 * se_prop),
-                position = position_dodge(0.8), width = 0.2, linewidth = 0.8) +
-  scale_fill_manual(values = c(colors_pre, colors_post)) +
-  scale_y_continuous(labels = scales::percent_format(accuracy = 0.1),
-                     expand = expansion(mult = c(0, 0.15))) +
-  labs(x = NULL, y = "Proportion of Populist Tweets",
-       title = "Coalition: By Party", fill = "Period") +
-  theme_minimal() +
-  theme(
-    plot.title = element_text(face = "bold", hjust = 0.5, size = 12),
-    axis.title.y = element_text(face = "bold", size = 10),
-    axis.text = element_text(size = 9),
-    legend.position = "bottom",
-    legend.title = element_text(face = "bold", size = 9),
-    panel.grid.major.x = element_blank()
-  )
-
-# Combine into 4-panel plot
-combined_plot <- grid.arrange(plot1, plot2, plot3, plot4, ncol = 2)
-
-# Save plot
-ggsave("output/plot_dual_cutoff_comparison_R.png", combined_plot,
-       width = 14, height = 10, dpi = 300)
-
-cat("✓ Comparison plot saved\n\n")
-
-# ==============================================================================
-# 5. SAVE RESULTS
-# ==============================================================================
-
-cat("Saving results...\n")
-saveRDS(results, "output/dual_cutoff_results.rds")
-cat("Results saved\n\n")
-
-# ==============================================================================
-# 6. CREATE COMPREHENSIVE MARKDOWN DOCUMENTATION
-# ==============================================================================
-
-cat("Creating documentation...\n\n")
-
-# Helper function to format data frame as markdown table
-df_to_markdown <- function(df) {
-  header <- paste0("| ", paste(names(df), collapse = " | "), " |")
-  separator <- paste0("| ", paste(rep("---", ncol(df)), collapse = " | "), " |")
-
-  rows <- apply(df, 1, function(row) {
-    paste0("| ", paste(row, collapse = " | "), " |")
-  })
-
-  paste(c(header, separator, rows), collapse = "\n")
+  # % change annotations
+  for (i in seq_along(parties)) {
+    y_top <- max(c(pre_v[i] + 1.96*pre_se[i],
+                   post_v[i] + 1.96*post_se[i])) + 0.032
+    p <- p + annotate("label", x=i, y=y_top,
+                       label=sprintf("Δ %+.1f%%", pct_ch[i]),
+                       size=3.2, color="#333", fontface="italic",
+                       fill="white", label.size=0.3)
+  }
+  if (!is.null(footnote))
+    p <- p + labs(caption=footnote) +
+      theme(plot.caption=element_text(size=7.5, color="#666", face="italic"))
+  p
 }
 
-md_content <- sprintf("# Stage 3: Dual Cutoff Statistical Analysis (R)
+# ── se helper ────────────────────────────────────────────────────────────────
+se <- function(x) sd(x)/sqrt(length(x))
 
-**Date:** %s
+# ==============================================================================
+# COMPARISON 1
+# ==============================================================================
 
-**Purpose:** Compare populist rhetoric using **TWO** cutoff dates to test competing hypotheses.
+cat("--- COMPARISON 1: All pre vs Radicalized post ---\n")
 
----
+pre_all  <- data %>% filter(post_election==0) %>% pull(pop) %>% as.numeric()
+post_rad <- data %>% filter(post_election==1, radicalized_group) %>%
+              pull(pop) %>% as.numeric()
 
-## Competing Hypotheses
+c1 <- run_tests(pre_all, post_rad)
+cat(sprintf("  Pre %.4f  Post %.4f  Δ %+.2f%%\n",
+            c1$pre_m, c1$post_m, c1$pct))
+cat(sprintf("  t=%.4f  p=%.2e  d=%.4f  χ²=%.4f  p=%.2e  V=%.4f\n\n",
+            c1$t, c1$t_p, c1$d, c1$chi2, c1$chi_p, c1$v))
 
-### Hypothesis 1: Election Effect (March 23, 2021)
-Change in populist rhetoric occurs at the **election date**, when electoral incentives shift.
+p3a <- bar_two_plot(
+  labels   = c("Pre-election\n(All parties)",
+               "Post-election\nRadicalized & Radical Populism"),
+  pre_m    = c1$pre_m,  post_m   = c1$post_m,
+  pre_se   = se(pre_all), post_se = se(post_rad),
+  title    = "Radicalized and Radical Populism:\nOverall Before vs After Election",
+  stats_label = sprintf("Δ %+.1f%%  |  t=%.2f, p=%.2e  |  d=%.3f",
+                         c1$pct, c1$t, c1$t_p, c1$d))
+ggsave("output/plot3a_comp1_overall.png", p3a, width=7, height=6, dpi=300)
+cat("✓ plot3a_comp1_overall.png\n")
 
-### Hypothesis 2: Coalition Effect (June 13, 2021)
-Change occurs at **coalition formation**, when government responsibility begins.
+# ==============================================================================
+# COMPARISON 1b — Likud vs PRR legislators
+# ==============================================================================
 
----
+cat("--- COMPARISON 1b: Likud vs PRR legislators ---\n")
 
-## Executive Summary
+likud_pre  <- data %>% filter(post_election==0, party=="Likud") %>%
+                pull(pop) %>% as.numeric()
+likud_post <- data %>% filter(post_election==1, party=="Likud") %>%
+                pull(pop) %>% as.numeric()
+prr_pre    <- data %>% filter(post_election==0, prr_leg_pre)  %>%
+                pull(pop) %>% as.numeric()
+prr_post   <- data %>% filter(post_election==1, prr_leg_post) %>%
+                pull(pop) %>% as.numeric()
 
-### Election Cutoff (March 23, 2021)
+likud_ch <- (mean(likud_post)-mean(likud_pre))/mean(likud_pre)*100
+prr_ch   <- (mean(prr_post)  -mean(prr_pre))  /mean(prr_pre)  *100
+prr_t    <- run_tests(prr_pre, prr_post)
 
-**Overall Change:**
-- Pre-election: %.4f (%.2f%%)
-- Post-election: %.4f (%.2f%%)
-- **Change: %+.2f%%**
-- **Statistical significance:** p = %.4e
-- **Effect size:** Cohen's d = %.4f (%s)
+cat(sprintf("  Likud  pre %.4f  post %.4f  Δ %+.2f%%\n",
+            mean(likud_pre), mean(likud_post), likud_ch))
+cat(sprintf("  PRR    pre %.4f  post %.4f  Δ %+.2f%%\n\n",
+            mean(prr_pre), mean(prr_post), prr_ch))
 
-### Coalition Cutoff (June 13, 2021)
+p3b <- bar_grouped_plot(
+  parties  = c("Likud", "PRR Legislators"),
+  pre_v    = c(mean(likud_pre),  mean(prr_pre)),
+  post_v   = c(mean(likud_post), mean(prr_post)),
+  pre_se   = c(se(likud_pre),    se(prr_pre)),
+  post_se  = c(se(likud_post),   se(prr_post)),
+  title    = "Radicalized and Radical Populism: Likud vs PRR Legislators",
+  pct_ch   = c(likud_ch, prr_ch),
+  footnote = paste0("PRR legislators Pre: ", paste(PRR_PRE_NAMES, collapse=", "),
+                    "\nPost adds: rothmar, itamarbengvir"))
+ggsave("output/plot3b_comp1_by_group.png", p3b, width=9, height=6, dpi=300)
+cat("✓ plot3b_comp1_by_group.png\n")
 
-**Overall Change:**
-- Pre-coalition: %.4f (%.2f%%)
-- Post-coalition: %.4f (%.2f%%)
-- **Change: %+.2f%%**
-- **Statistical significance:** p = %.4e
-- **Effect size:** Cohen's d = %.4f (%s)
+# ==============================================================================
+# COMPARISON 2
+# ==============================================================================
 
----
+cat("--- COMPARISON 2: PRRPs in Change Coalition ---\n")
 
-## Summary Tables
+cc_pre  <- data %>% filter(post_election==0, change_coalition_group) %>%
+             pull(pop) %>% as.numeric()
+cc_post <- data %>% filter(post_election==1, change_coalition_group) %>%
+             pull(pop) %>% as.numeric()
 
-### Election Cutoff: Overall
+c2 <- run_tests(cc_pre, cc_post)
+cat(sprintf("  Pre %.4f  Post %.4f  Δ %+.2f%%\n",
+            c2$pre_m, c2$post_m, c2$pct))
+cat(sprintf("  t=%.4f  p=%.2e  d=%.4f  χ²=%.4f  p=%.2e  V=%.4f\n\n",
+            c2$t, c2$t_p, c2$d, c2$chi2, c2$chi_p, c2$v))
 
-%s
+p3c <- bar_two_plot(
+  labels    = c("Pre-election\nPRRPs in Change Coalition",
+                "Post-election\nPRRPs in Change Coalition"),
+  pre_m     = c2$pre_m,  post_m  = c2$post_m,
+  pre_se    = se(cc_pre), post_se = se(cc_post),
+  title     = "PRRPs in Change Coalition:\nOverall Before vs After Election",
+  stats_label = sprintf("Δ %+.1f%%  |  t=%.2f, p=%.2e  |  d=%.3f",
+                         c2$pct, c2$t, c2$t_p, c2$d))
+ggsave("output/plot3c_comp2_overall.png", p3c, width=7, height=6, dpi=300)
+cat("✓ plot3c_comp2_overall.png\n")
 
-### Election Cutoff: By Party
+# ==============================================================================
+# COMPARISON 2b — Rightwards vs Israel Our Home
+# ==============================================================================
 
-%s
+cat("--- COMPARISON 2b: Rightwards vs Israel Our Home ---\n")
 
-### Coalition Cutoff: Overall
+right_pre  <- data %>% filter(post_election==0, party=="Rightwards")     %>% pull(pop) %>% as.numeric()
+right_post <- data %>% filter(post_election==1, party=="Rightwards")     %>% pull(pop) %>% as.numeric()
+ioh_pre    <- data %>% filter(post_election==0, party=="Israel Our Home") %>% pull(pop) %>% as.numeric()
+ioh_post   <- data %>% filter(post_election==1, party=="Israel Our Home") %>% pull(pop) %>% as.numeric()
 
-%s
+right_ch <- (mean(right_post)-mean(right_pre))/mean(right_pre)*100
+ioh_ch   <- (mean(ioh_post)  -mean(ioh_pre))  /mean(ioh_pre)  *100
 
-### Coalition Cutoff: By Party
+cat(sprintf("  Rightwards    pre %.4f  post %.4f  Δ %+.2f%%\n",
+            mean(right_pre), mean(right_post), right_ch))
+cat(sprintf("  Israel Our Home pre %.4f  post %.4f  Δ %+.2f%%\n\n",
+            mean(ioh_pre), mean(ioh_post), ioh_ch))
 
-%s
+p3d <- bar_grouped_plot(
+  parties  = c("Rightwards", "Israel Our Home"),
+  pre_v    = c(mean(right_pre),  mean(ioh_pre)),
+  post_v   = c(mean(right_post), mean(ioh_post)),
+  pre_se   = c(se(right_pre),    se(ioh_pre)),
+  post_se  = c(se(right_post),   se(ioh_post)),
+  title    = "PRRPs in Change Coalition: Rightwards vs Israel Our Home",
+  pct_ch   = c(right_ch, ioh_ch))
+ggsave("output/plot3d_comp2_by_party.png", p3d, width=9, height=6, dpi=300)
+cat("✓ plot3d_comp2_by_party.png\n")
 
----
-
-## Statistical Tests: Election Cutoff
-
-### Two-Sample t-test
-
-- **t-statistic:** %.4f
-- **p-value:** %.4e
-- **Difference:** %.4f (%+.2f%%)
-- **Cohen's d:** %.4f (%s)
-
-### Chi-Square Test
-
-- **χ² statistic:** %.4f
-- **p-value:** %.4e
-- **Cramér's V:** %.4f (%s)
-
----
-
-## Statistical Tests: Coalition Cutoff
-
-### Two-Sample t-test
-
-- **t-statistic:** %.4f
-- **p-value:** %.4e
-- **Difference:** %.4f (%+.2f%%)
-- **Cohen's d:** %.4f (%s)
-
-### Chi-Square Test
-
-- **χ² statistic:** %.4f
-- **p-value:** %.4e
-- **Cramér's V:** %.4f (%s)
-
----
-
-## Visualization
-
-![Dual Cutoff Comparison](plot_dual_cutoff_comparison_R.png)
-
-**Description:** Four-panel comparison showing overall and party-level effects for both cutoff dates.
-
----
-
-## Interpretation & Discussion Points
-
-### Which Cutoff Shows Stronger Evidence?
-
-Compare:
-1. **Magnitude of change:** Election %+.2f%% vs Coalition %+.2f%%
-2. **Effect sizes:** Election d=%.4f vs Coalition d=%.4f
-3. **Visual inspection:** See Stage 2 time series plots
-
-### Theoretical Implications
-
-- **If election effect stronger:** Supports electoral incentive mechanism
-- **If coalition effect stronger:** Supports government responsibility mechanism
-- **If both significant:** Suggests gradual transition period
-
----
-
-## Output Files
-
-- **output/dual_cutoff_results.rds**: Complete statistical results (R format)
-- **output/plot_dual_cutoff_comparison_R.png**: Four-panel comparison visualization
-- **output/dual_cutoff_analysis_R.md**: This documentation
-
----
-
-**Analysis complete (R version).** Both hypotheses tested - results match Python implementation.
-",
-format(Sys.Date(), "%B %d, %Y"),
-election_tests$t_test$pre_mean, election_tests$t_test$pre_mean*100,
-election_tests$t_test$post_mean, election_tests$t_test$post_mean*100,
-election_tests$t_test$pct_change,
-election_tests$t_test$p_value,
-election_tests$t_test$cohens_d, election_tests$t_test$effect_interpretation,
-coalition_tests$t_test$pre_mean, coalition_tests$t_test$pre_mean*100,
-coalition_tests$t_test$post_mean, coalition_tests$t_test$post_mean*100,
-coalition_tests$t_test$pct_change,
-coalition_tests$t_test$p_value,
-coalition_tests$t_test$cohens_d, coalition_tests$t_test$effect_interpretation,
-df_to_markdown(election_summaries$overall),
-df_to_markdown(election_summaries$party),
-df_to_markdown(coalition_summaries$overall),
-df_to_markdown(coalition_summaries$party),
-election_tests$t_test$t_statistic,
-election_tests$t_test$p_value,
-election_tests$t_test$difference, election_tests$t_test$pct_change,
-election_tests$t_test$cohens_d, election_tests$t_test$effect_interpretation,
-election_tests$chi_square$chi2_statistic,
-election_tests$chi_square$p_value,
-election_tests$chi_square$cramers_v, election_tests$chi_square$effect_interpretation,
-coalition_tests$t_test$t_statistic,
-coalition_tests$t_test$p_value,
-coalition_tests$t_test$difference, coalition_tests$t_test$pct_change,
-coalition_tests$t_test$cohens_d, coalition_tests$t_test$effect_interpretation,
-coalition_tests$chi_square$chi2_statistic,
-coalition_tests$chi_square$p_value,
-coalition_tests$chi_square$cramers_v, coalition_tests$chi_square$effect_interpretation,
-election_tests$t_test$pct_change, coalition_tests$t_test$pct_change,
-election_tests$t_test$cohens_d, coalition_tests$t_test$cohens_d
-)
-
-writeLines(md_content, "output/dual_cutoff_analysis_R.md")
-
-cat("Documentation saved\n")
-cat("\n=== STAGE 3 COMPLETE (R VERSION) ===\n")
-cat("Dual cutoff analysis complete!\n")
-cat("- Election cutoff: tested\n")
-cat("- Coalition cutoff: tested\n")
-cat("- Comparison visualization: created\n")
-cat("- Full documentation: generated\n")
-cat(sprintf("\nKey finding: Both cutoffs show significant effects.\n"))
-cat(sprintf("  Election: %+.1f%% change (d=%.3f)\n", election_tests$t_test$pct_change, election_tests$t_test$cohens_d))
-cat(sprintf("  Coalition: %+.1f%% change (d=%.3f)\n", coalition_tests$t_test$pct_change, coalition_tests$t_test$cohens_d))
+# Save results
+saveRDS(list(c1=c1, c2=c2, prr=prr_t), "output/comparison_results.rds")
+cat("\n✓ output/comparison_results.rds saved\n")
+cat("\n=== STAGE 3 COMPLETE ===\n")

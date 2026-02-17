@@ -1,284 +1,120 @@
 #!/usr/bin/env python3
 """
 ==============================================================================
-Stage 2: Time Series Visualizations
+Stage 2: Time Series Plots
 ==============================================================================
-Purpose: Create time series plots showing populist rhetoric trends over time
-Input: analysis_data.pkl (from Stage 1)
-Outputs: 2 PNG plots (overall + by party) + markdown documentation
-Note: Shows both election (March 23) and coalition (June 13) dates
+Plot 2a: All parties (baseline) vs "Radicalized and Radical Populism"
+         (Likud + Religious Zionism) — election vertical line
+Plot 2b: Rightwards vs Israel Our Home — election vertical line
+Outputs: output/plot2a_radicalized_trend.png
+         output/plot2b_change_coalition_trend.png
 ==============================================================================
 """
 
 import pandas as pd
 import numpy as np
 import matplotlib
-matplotlib.use('Agg')  # Use non-interactive backend
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mtick
 import seaborn as sns
-from datetime import datetime
 
-# Set plotting style
 sns.set_style("whitegrid")
-plt.rcParams['figure.dpi'] = 300
-plt.rcParams['savefig.dpi'] = 300
-plt.rcParams['font.size'] = 10
-plt.rcParams['axes.labelsize'] = 11
-plt.rcParams['axes.titlesize'] = 12
-plt.rcParams['xtick.labelsize'] = 9
-plt.rcParams['ytick.labelsize'] = 9
-plt.rcParams['legend.fontsize'] = 10
+plt.rcParams["figure.dpi"] = 300
+plt.rcParams["savefig.dpi"] = 300
 
-# Define color palette
-colors = {
-    'main': '#2E86AB',
-    'Likud': '#E63946',
-    'PRRPs': '#F77F00',
-    'new': '#06A77D',
-    'continuing': '#5E60CE',
-    'cutoff': '#333333'
-}
+WINDOW   = 4          # weeks rolling average
+ELEC_WK  = 0          # election is week 0 by definition
 
-# ==============================================================================
-# 1. LOAD DATA
-# ==============================================================================
+print("=" * 70)
+print("STAGE 2: TIME SERIES PLOTS")
+print("=" * 70)
 
-print("Loading cleaned dataset...")
-analysis_data = pd.read_pickle("output/analysis_data.pkl")
-print(f"Loaded {len(analysis_data)} observations\n")
+data = pd.read_pickle("output/analysis_data.pkl")
+print(f"\nLoaded {len(data):,} rows")
 
-# ==============================================================================
-# 2. PREPARE AGGREGATED DATA
-# ==============================================================================
+# ── helper ───────────────────────────────────────────────────────────────────
+def weekly_prop(df_subset):
+    """Return weekly proportion of populist tweets."""
+    return (df_subset.groupby("week_from_election")
+                     .agg(pop_sum=("pop", "sum"), total=("pop", "count"))
+                     .assign(prop=lambda x: x.pop_sum / x.total)
+                     .reset_index())
 
-print("Preparing aggregated data for visualization...")
+def smooth(series, w=WINDOW):
+    return series.rolling(window=w, center=True, min_periods=1).mean()
 
-# 2.1 Overall weekly aggregates
-weekly_overall = analysis_data.groupby('week_from_cutoff').agg({
-    'pop': ['sum', 'count', 'mean'],
-    'day': 'min'
-}).reset_index()
-weekly_overall.columns = ['week_from_cutoff', 'populist_tweets', 'total_tweets', 'prop_populist', 'week_start']
-print(f"Overall: {len(weekly_overall)} weeks")
+# ──────────────────────────────────────────────────────────────────────────────
+# PLOT 2a — All parties vs Radicalized and Radical Populism
+# ──────────────────────────────────────────────────────────────────────────────
+print("\nPlot 2a: All parties vs Radicalized trend...")
 
-# 2.2 By party_group
-weekly_by_party = analysis_data.groupby(['week_from_cutoff', 'party_group']).agg({
-    'pop': ['sum', 'count', 'mean'],
-    'day': 'min'
-}).reset_index()
-weekly_by_party.columns = ['week_from_cutoff', 'party_group', 'populist_tweets', 'total_tweets', 'prop_populist', 'week_start']
-print(f"By party: {len(weekly_by_party)} party-week observations")
-
-# Calculate week numbers for election date (March 23, 2021)
-election_date = pd.to_datetime("2021-03-23")
-cutoff_date = pd.to_datetime("2021-06-13")
-election_week = int((election_date - cutoff_date).days / 7)
-print(f"Election date week: {election_week}")
-print(f"Coalition date week: 0\n")
-
-# ==============================================================================
-# 3. PLOT 1: OVERALL TREND
-# ==============================================================================
-
-print("Creating Plot 1: Overall populist proportion trend...")
+all_wk  = weekly_prop(data).sort_values("week_from_election")
+rad_wk  = weekly_prop(data[data["radicalized_group"]]).sort_values("week_from_election")
 
 fig, ax = plt.subplots(figsize=(12, 6))
 
-# Plot raw weekly proportions
-ax.scatter(weekly_overall['week_from_cutoff'],
-           weekly_overall['prop_populist'],
-           alpha=0.3, s=20, color=colors['main'], label='Weekly values')
+# scatter dots (faint)
+ax.scatter(all_wk["week_from_election"], all_wk["prop"],
+           alpha=0.18, s=14, color="#7f8c8d")
+ax.scatter(rad_wk["week_from_election"], rad_wk["prop"],
+           alpha=0.18, s=14, color="#e74c3c")
 
-# Add smoothed trend (rolling average)
-window = 4  # 4-week rolling average
-weekly_overall_sorted = weekly_overall.sort_values('week_from_cutoff')
-rolling_mean = weekly_overall_sorted['prop_populist'].rolling(window=window, center=True).mean()
-ax.plot(weekly_overall_sorted['week_from_cutoff'], rolling_mean,
-        linewidth=2.5, color=colors['main'], label=f'{window}-week rolling average')
+# smoothed lines
+ax.plot(all_wk["week_from_election"], smooth(all_wk["prop"]),
+        linewidth=2.5, color="#7f8c8d", label="All parties (pre-election baseline)")
+ax.plot(rad_wk["week_from_election"], smooth(rad_wk["prop"]),
+        linewidth=2.5, color="#e74c3c", label="Radicalized and Radical Populism\n(Likud + Religious Zionism)")
 
-# Add vertical lines for both dates
-ax.axvline(x=election_week, color='#9B59B6', linestyle=':', linewidth=2.5,
-           label='Election (March 23, 2021)', alpha=0.8)
-ax.axvline(x=0, color=colors['cutoff'], linestyle='--', linewidth=2.5,
-           label='Coalition (June 13, 2021)', alpha=0.8)
+# election line
+ax.axvline(x=0, color="#2c3e50", linestyle="--", linewidth=2,
+           label="Election — March 23, 2021")
 
-# Labels and formatting
-ax.set_xlabel('Weeks from Cutoff (June 13, 2021)', fontweight='bold')
-ax.set_ylabel('Proportion of Populist Tweets', fontweight='bold')
-ax.set_title('Populist Rhetoric Over Time: Overall Trend', fontweight='bold', pad=20)
-ax.legend(loc='best', frameon=True, fancybox=True, shadow=True)
+ax.yaxis.set_major_formatter(mtick.PercentFormatter(xmax=1, decimals=1))
+ax.set_xlabel("Weeks from Election (March 23, 2021)", fontweight="bold")
+ax.set_ylabel("Proportion of Populist Tweets", fontweight="bold")
+ax.set_title("Populist Rhetoric Over Time:\nAll Parties vs Radicalized and Radical Populism",
+             fontweight="bold", pad=14)
+ax.legend(loc="upper left", frameon=True, fancybox=True, shadow=True, fontsize=10)
 ax.grid(True, alpha=0.3)
-
-# Format y-axis as percentage
-ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: f'{y:.1%}'))
-
 plt.tight_layout()
-plt.savefig('output/plot1_overall_trend.png', dpi=300, bbox_inches='tight')
+plt.savefig("output/plot2a_radicalized_trend.png", bbox_inches="tight")
 plt.close()
+print("✓ output/plot2a_radicalized_trend.png")
 
-print("✓ Plot 1 saved as 'output/plot1_overall_trend.png'\n")
+# ──────────────────────────────────────────────────────────────────────────────
+# PLOT 2b — Rightwards vs Israel Our Home
+# ──────────────────────────────────────────────────────────────────────────────
+print("\nPlot 2b: Rightwards vs Israel Our Home trend...")
 
-# ==============================================================================
-# 4. PLOT 2: BY PARTY GROUP
-# ==============================================================================
-
-print("Creating Plot 2: Trend by party group (Likud vs PRRPs)...")
+right_wk = weekly_prop(data[data["party"] == "Rightwards"]).sort_values("week_from_election")
+ioh_wk   = weekly_prop(data[data["party"] == "Israel Our Home"]).sort_values("week_from_election")
 
 fig, ax = plt.subplots(figsize=(12, 6))
 
-# Plot for each party group
-for party in ['Likud', 'PRRPs']:
-    party_data = weekly_by_party[weekly_by_party['party_group'] == party].sort_values('week_from_cutoff')
+ax.scatter(right_wk["week_from_election"], right_wk["prop"],
+           alpha=0.18, s=14, color="#2980b9")
+ax.scatter(ioh_wk["week_from_election"], ioh_wk["prop"],
+           alpha=0.18, s=14, color="#27ae60")
 
-    # Scatter points
-    ax.scatter(party_data['week_from_cutoff'],
-               party_data['prop_populist'],
-               alpha=0.3, s=20, color=colors[party])
+ax.plot(right_wk["week_from_election"], smooth(right_wk["prop"]),
+        linewidth=2.5, color="#2980b9", label="Rightwards")
+ax.plot(ioh_wk["week_from_election"], smooth(ioh_wk["prop"]),
+        linewidth=2.5, color="#27ae60", label="Israel Our Home")
 
-    # Rolling average
-    rolling_mean = party_data['prop_populist'].rolling(window=window, center=True).mean()
-    ax.plot(party_data['week_from_cutoff'], rolling_mean,
-            linewidth=2.5, color=colors[party], label=party)
+ax.axvline(x=0, color="#2c3e50", linestyle="--", linewidth=2,
+           label="Election — March 23, 2021")
 
-# Add vertical lines for both dates
-ax.axvline(x=election_week, color='#9B59B6', linestyle=':', linewidth=2.5,
-           label='Election (March 23)', alpha=0.8)
-ax.axvline(x=0, color=colors['cutoff'], linestyle='--', linewidth=2.5,
-           label='Coalition (June 13)', alpha=0.8)
-
-# Labels and formatting
-ax.set_xlabel('Weeks from Coalition Cutoff (June 13, 2021)', fontweight='bold')
-ax.set_ylabel('Proportion of Populist Tweets', fontweight='bold')
-ax.set_title('Populist Rhetoric Over Time: By Party Group', fontweight='bold', pad=20)
-ax.legend(loc='best', frameon=True, fancybox=True, shadow=True)
+ax.yaxis.set_major_formatter(mtick.PercentFormatter(xmax=1, decimals=1))
+ax.set_xlabel("Weeks from Election (March 23, 2021)", fontweight="bold")
+ax.set_ylabel("Proportion of Populist Tweets", fontweight="bold")
+ax.set_title("Populist Rhetoric Over Time:\nPRRPs in Change Coalition (Rightwards vs Israel Our Home)",
+             fontweight="bold", pad=14)
+ax.legend(loc="upper left", frameon=True, fancybox=True, shadow=True, fontsize=10)
 ax.grid(True, alpha=0.3)
-
-# Format y-axis as percentage
-ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: f'{y:.1%}'))
-
 plt.tight_layout()
-plt.savefig('output/plot2_by_party.png', dpi=300, bbox_inches='tight')
+plt.savefig("output/plot2b_change_coalition_trend.png", bbox_inches="tight")
 plt.close()
-
-print("✓ Plot 2 saved as 'output/plot2_by_party.png'\n")
-
-# Plot 3 removed - focusing on overall and party trends only
-
-# ==============================================================================
-# 6. CREATE MARKDOWN DOCUMENTATION
-# ==============================================================================
-
-print("Creating markdown documentation...")
-
-# Calculate some summary statistics for documentation
-pre_cutoff_mean = weekly_overall[weekly_overall['week_from_cutoff'] < 0]['prop_populist'].mean()
-post_cutoff_mean = weekly_overall[weekly_overall['week_from_cutoff'] >= 0]['prop_populist'].mean()
-change_pct = ((post_cutoff_mean - pre_cutoff_mean) / pre_cutoff_mean) * 100
-
-md_content = f"""# Stage 2: Time Series Visualizations
-
-**Date:** {datetime.now().strftime("%B %d, %Y")}
-
-**Purpose:** Visualize trends in populist rhetoric over time, showing both critical dates.
-
----
-
-## Overview
-
-This analysis examines temporal trends in populist tweets from Israeli legislators, showing **two critical dates**:
-- **March 23, 2021**: Election date (dotted purple line)
-- **June 13, 2021**: Coalition formation (dashed black line)
-
-Visual inspection helps determine which event marks the true discontinuity in populist rhetoric.
-
-### Key Findings (Coalition Cutoff)
-
-- **Pre-coalition mean:** {pre_cutoff_mean:.2%} populist tweets
-- **Post-coalition mean:** {post_cutoff_mean:.2%} populist tweets
-- **Change:** {change_pct:+.1f}% increase
-
----
-
-## Visualizations
-
-### Plot 1: Overall Trend
-
-![Overall Trend](plot1_overall_trend.png)
-
-**Description:** Overall proportion of populist tweets over time with a {window}-week rolling average.
-- **Purple dotted line**: Election (March 23, 2021)
-- **Black dashed line**: Coalition formation (June 13, 2021)
-
-**Key observations:**
-- Visual inspection reveals timing of the change
-- Smoothed trend line shows the general trajectory
-- Both critical dates marked for comparison
-
----
-
-### Plot 2: By Party Group (Likud vs PRRPs)
-
-![By Party Group](plot2_by_party.png)
-
-**Description:** Compares populist rhetoric trends between Likud and PRRPs (Populist Radical Right Parties).
-
-**Key observations:**
-- Differential timing of changes between party groups possible
-- Both critical dates shown for each group
-- {window}-week rolling averages smooth out weekly volatility
-
----
-
-## Data Summary
-
-- **Total observations:** {len(analysis_data):,}
-- **Time span:** {len(weekly_overall)} weeks
-- **Election week:** {election_week} (March 23, 2021)
-- **Coalition week:** 0 (June 13, 2021)
-- **Smoothing method:** {window}-week rolling average (centered)
-
----
-
-## Technical Details
-
-**Critical dates:**
-- **Election**: March 23, 2021 (week {election_week})
-- **Coalition**: June 13, 2021 (week 0, reference point)
-
-**Visualization settings:**
-- Resolution: 300 DPI
-- Format: PNG
-- Smoothing: {window}-week centered rolling average
-- Two vertical lines mark both critical dates
-
-**Data aggregation:**
-- Weekly aggregation by `week_from_cutoff` (relative to coalition date)
-- Proportion calculated as: populist_tweets / total_tweets
-
----
-
-## Output Files
-
-- **plot1_overall_trend.png**: Overall populist proportion trend
-- **plot2_by_party.png**: Trend comparison by party group
-
----
-
-## Next Steps
-
-Proceed to Stage 3: Statistical tests for **both** cutoff dates to determine which hypothesis is supported.
-"""
-
-with open("output/plots_stage2.md", "w") as f:
-    f.write(md_content)
-
-print("Documentation saved as 'output/plots_stage2.md'")
+print("✓ output/plot2b_change_coalition_trend.png")
 
 print("\n=== STAGE 2 COMPLETE ===")
-print("All plots created successfully!")
-print(f"- plot1_overall_trend.png (shows both election + coalition dates)")
-print(f"- plot2_by_party.png (shows both election + coalition dates)")
-print(f"- plots_stage2.md")
-print(f"\nBoth critical dates visualized:")
-print(f"  - Election: March 23, 2021 (week {election_week}, purple dotted)")
-print(f"  - Coalition: June 13, 2021 (week 0, black dashed)")

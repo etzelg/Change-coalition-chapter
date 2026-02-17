@@ -1,13 +1,19 @@
 #!/usr/bin/env python3
 """
 ==============================================================================
-Stage 3: Before/After Statistical Comparison - DUAL CUTOFF ANALYSIS
+Stage 3: Before/After Statistical Analysis — Election Cutoff
 ==============================================================================
-Purpose: Compare populist rhetoric for TWO cutoff dates:
-         1. Election (March 23, 2021)
-         2. Coalition Formation (June 13, 2021)
-Input: analysis_data.pkl (from Stage 1)
-Outputs: Statistical tests for both hypotheses, comparison tables, plots
+Comparison 1 (main):
+  PRE  = ALL 7 parties
+  POST = Likud + Religious Zionism  → "Radicalized and Radical Populism"
+
+Comparison 2 (corollary):
+  PRE & POST = Rightwards + Israel Our Home → "PRRPs in Change Coalition"
+
+Plot 3a  – Comparison 1 overall bar
+Plot 3b  – Comparison 1 detail: Likud | PRR legislators (named, expanding group)
+Plot 3c  – Comparison 2 overall bar
+Plot 3d  – Comparison 2 detail: Rightwards | Israel Our Home
 ==============================================================================
 """
 
@@ -15,426 +21,375 @@ import pandas as pd
 import numpy as np
 import pickle
 import matplotlib
-matplotlib.use('Agg')
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mtick
 import seaborn as sns
 from scipy import stats
 from datetime import datetime
 
-# Set plotting style
 sns.set_style("whitegrid")
-plt.rcParams['figure.dpi'] = 300
-plt.rcParams['savefig.dpi'] = 300
+plt.rcParams["figure.dpi"] = 300
+plt.rcParams["savefig.dpi"] = 300
+
+COL_PRE  = "#3498db"   # blue
+COL_POST = "#e74c3c"   # red
+
+print("=" * 70)
+print("STAGE 3: BEFORE/AFTER STATISTICAL ANALYSIS")
+print("=" * 70)
+
+data = pd.read_pickle("output/analysis_data.pkl")
+print(f"\nLoaded {len(data):,} rows")
+
+# Named-legislator lists
+PRR_PRE_NAMES  = ["bezalelsm", "michalwoldiger", "ofir_sofer", "oritstrock"]
+PRR_POST_NAMES = ["bezalelsm", "michalwoldiger", "ofir_sofer", "oritstrock",
+                  "rothmar", "itamarbengvir"]
 
 # ==============================================================================
-# 1. LOAD DATA AND DEFINE CUTOFFS
+# HELPER FUNCTIONS
 # ==============================================================================
 
-print("Loading cleaned dataset...")
-analysis_data = pd.read_pickle("output/analysis_data.pkl")
-print(f"Loaded {len(analysis_data)} observations\n")
+def summary_stats(series_pre, series_post, label_pre, label_post):
+    """Return a one-row-per-period summary dataframe."""
+    rows = []
+    for label, s in [(label_pre, series_pre), (label_post, series_post)]:
+        rows.append({"period": label,
+                     "total_tweets":    len(s),
+                     "populist_tweets": int(s.sum()),
+                     "mean_prop":       s.mean(),
+                     "se_prop":         s.std() / np.sqrt(len(s))})
+    return pd.DataFrame(rows)
 
-# Define both cutoff dates
-election_date = pd.to_datetime("2021-03-23")
-coalition_date = pd.to_datetime("2021-06-13")
+def run_tests(series_pre, series_post):
+    """t-test, chi-square, Cohen's d, Cramér's V."""
+    t_stat, t_p = stats.ttest_ind(series_pre, series_post)
+    pre_m  = series_pre.mean()
+    post_m = series_post.mean()
+    pool   = np.sqrt(((len(series_pre)-1)*series_pre.std()**2 +
+                      (len(series_post)-1)*series_post.std()**2) /
+                     (len(series_pre)+len(series_post)-2))
+    d = (post_m - pre_m) / pool if pool > 0 else 0.0
+    pct = (post_m - pre_m) / pre_m * 100 if pre_m > 0 else float("nan")
 
-# Create indicators for both cutoffs
-analysis_data['post_election'] = (analysis_data['day'] >= election_date).astype(int)
-analysis_data['post_coalition'] = (analysis_data['day'] >= coalition_date).astype(int)
+    ct = np.array([[int((series_pre  == 0).sum()), int(series_pre.sum())],
+                   [int((series_post == 0).sum()), int(series_post.sum())]])
+    chi2, chi_p, dof, _ = stats.chi2_contingency(ct)
+    n = ct.sum()
+    v = np.sqrt(chi2 / (n * (min(ct.shape) - 1))) if n > 0 else 0.0
 
-print("=== TWO CUTOFF DATES DEFINED ===")
-print(f"Election date: March 23, 2021")
-print(f"Coalition date: June 13, 2021\n")
+    return {"t": t_stat, "t_p": t_p,
+            "pre_mean": pre_m, "post_mean": post_m,
+            "diff": post_m - pre_m, "pct_change": pct,
+            "cohens_d": d, "chi2": chi2, "chi_p": chi_p, "cramers_v": v}
 
-# ==============================================================================
-# 2. SUMMARY TABLES FOR BOTH CUTOFFS
-# ==============================================================================
+def bar_two(ax, df, title, color_map=None):
+    """Simple two-bar (pre vs post overall) plot."""
+    periods = df["period"].tolist()
+    vals    = df["mean_prop"].tolist()
+    errs    = (1.96 * df["se_prop"]).tolist()
+    colors  = [color_map.get(p, COL_PRE) if color_map else
+               (COL_PRE if "Pre" in p else COL_POST) for p in periods]
 
-print("=== GENERATING SUMMARY TABLES FOR BOTH CUTOFFS ===\n")
+    bars = ax.bar(periods, vals, yerr=errs, color=colors, edgecolor="black",
+                  linewidth=1.4, alpha=0.88, capsize=6, width=0.5)
+    for bar, v, e in zip(bars, vals, errs):
+        ax.text(bar.get_x() + bar.get_width()/2,
+                v + e + 0.003, f"{v:.2%}",
+                ha="center", va="bottom", fontsize=10, fontweight="bold")
+    ax.yaxis.set_major_formatter(mtick.PercentFormatter(xmax=1, decimals=1))
+    ax.set_ylabel("Proportion of Populist Tweets", fontweight="bold")
+    ax.set_title(title, fontweight="bold", pad=10)
+    ax.grid(axis="y", alpha=0.3, linestyle="--")
+    ax.set_axisbelow(True)
 
-results = {'election': {}, 'coalition': {}}
+def bar_grouped(ax, parties, pre_vals, post_vals, pre_errs, post_errs,
+                title, pct_changes):
+    """Grouped bar plot (two bars per x-category)."""
+    x     = np.arange(len(parties))
+    w     = 0.35
+    b_pre = ax.bar(x - w/2, pre_vals,  w, yerr=pre_errs,
+                   label="Pre-election",  color=COL_PRE,  edgecolor="black",
+                   linewidth=1.4, alpha=0.88, capsize=5)
+    b_pos = ax.bar(x + w/2, post_vals, w, yerr=post_errs,
+                   label="Post-election", color=COL_POST, edgecolor="black",
+                   linewidth=1.4, alpha=0.88, capsize=5)
 
-def generate_summaries(cutoff_var, cutoff_name):
-    """Generate all summary tables for a given cutoff"""
-    summaries = {}
+    for bar, v, e in zip(b_pre, pre_vals, pre_errs):
+        ax.text(bar.get_x() + bar.get_width()/2,
+                v + e + 0.003, f"{v:.2%}",
+                ha="center", va="bottom", fontsize=9, fontweight="bold")
+    for bar, v, e in zip(b_pos, post_vals, post_errs):
+        ax.text(bar.get_x() + bar.get_width()/2,
+                v + e + 0.003, f"{v:.2%}",
+                ha="center", va="bottom", fontsize=9, fontweight="bold")
 
-    # Overall summary
-    overall = analysis_data.groupby(cutoff_var).agg({
-        'pop': ['sum', 'count', 'mean', 'std'],
-        'screen_name': 'nunique'
-    }).reset_index()
-    overall.columns = [cutoff_var, 'populist_tweets', 'total_tweets', 'mean_prop', 'std_prop', 'unique_legislators']
-    overall['period'] = overall[cutoff_var].map({0: f'Pre-{cutoff_name}', 1: f'Post-{cutoff_name}'})
-    overall['se_prop'] = overall['std_prop'] / np.sqrt(overall['total_tweets'])
-    summaries['overall'] = overall[['period', 'total_tweets', 'populist_tweets', 'mean_prop', 'se_prop', 'unique_legislators']]
-
-    # By party
-    party = analysis_data.groupby([cutoff_var, 'party_group']).agg({
-        'pop': ['sum', 'count', 'mean', 'std'],
-        'screen_name': 'nunique'
-    }).reset_index()
-    party.columns = [cutoff_var, 'party_group', 'populist_tweets', 'total_tweets', 'mean_prop', 'std_prop', 'unique_legislators']
-    party['period'] = party[cutoff_var].map({0: f'Pre-{cutoff_name}', 1: f'Post-{cutoff_name}'})
-    party['se_prop'] = party['std_prop'] / np.sqrt(party['total_tweets'])
-    summaries['party'] = party[['period', 'party_group', 'total_tweets', 'populist_tweets', 'mean_prop', 'se_prop', 'unique_legislators']]
-
-    return summaries
-
-# Generate for both cutoffs
-print("--- ELECTION CUTOFF (March 23, 2021) ---\n")
-election_summaries = generate_summaries('post_election', 'Election')
-print("Overall:")
-print(election_summaries['overall'].to_string(index=False))
-print("\nBy Party:")
-print(election_summaries['party'].to_string(index=False))
-print()
-
-print("--- COALITION CUTOFF (June 13, 2021) ---\n")
-coalition_summaries = generate_summaries('post_coalition', 'Coalition')
-print("Overall:")
-print(coalition_summaries['overall'].to_string(index=False))
-print("\nBy Party:")
-print(coalition_summaries['party'].to_string(index=False))
-print()
-
-results['election']['summaries'] = election_summaries
-results['coalition']['summaries'] = coalition_summaries
-
-# ==============================================================================
-# 3. STATISTICAL TESTS FOR BOTH CUTOFFS
-# ==============================================================================
-
-print("=== CONDUCTING STATISTICAL TESTS FOR BOTH CUTOFFS ===\n")
-
-def run_statistical_tests(cutoff_var, cutoff_name):
-    """Run t-test and chi-square for a given cutoff"""
-    test_results = {}
-
-    # Two-sample t-test
-    pre_data = analysis_data[analysis_data[cutoff_var] == 0]['pop'].astype(int)
-    post_data = analysis_data[analysis_data[cutoff_var] == 1]['pop'].astype(int)
-
-    t_stat, t_pval = stats.ttest_ind(pre_data, post_data)
-
-    # Cohen's d
-    pre_mean = pre_data.mean()
-    post_mean = post_data.mean()
-    pooled_std = np.sqrt(((len(pre_data) - 1) * pre_data.std()**2 +
-                          (len(post_data) - 1) * post_data.std()**2) /
-                         (len(pre_data) + len(post_data) - 2))
-    cohens_d = (post_mean - pre_mean) / pooled_std
-
-    test_results['t_test'] = {
-        't_statistic': t_stat,
-        'p_value': t_pval,
-        'pre_mean': pre_mean,
-        'post_mean': post_mean,
-        'difference': post_mean - pre_mean,
-        'pct_change': ((post_mean - pre_mean) / pre_mean) * 100,
-        'cohens_d': cohens_d,
-        'effect_interpretation': 'small' if abs(cohens_d) < 0.5 else ('medium' if abs(cohens_d) < 0.8 else 'large')
-    }
-
-    # Chi-square test
-    contingency_table = pd.crosstab(analysis_data[cutoff_var], analysis_data['pop'])
-    chi2, chi_pval, dof, expected = stats.chi2_contingency(contingency_table)
-
-    n = contingency_table.sum().sum()
-    cramers_v = np.sqrt(chi2 / (n * (min(contingency_table.shape) - 1)))
-
-    test_results['chi_square'] = {
-        'chi2_statistic': chi2,
-        'p_value': chi_pval,
-        'degrees_of_freedom': dof,
-        'cramers_v': cramers_v,
-        'effect_interpretation': 'small' if cramers_v < 0.1 else ('medium' if cramers_v < 0.3 else 'large')
-    }
-
-    return test_results
-
-# Run tests for both cutoffs
-print("--- ELECTION CUTOFF ---")
-election_tests = run_statistical_tests('post_election', 'Election')
-print(f"t-test: t={election_tests['t_test']['t_statistic']:.4f}, p={election_tests['t_test']['p_value']:.4e}")
-print(f"  Pre: {election_tests['t_test']['pre_mean']:.4f} ({election_tests['t_test']['pre_mean']*100:.2f}%)")
-print(f"  Post: {election_tests['t_test']['post_mean']:.4f} ({election_tests['t_test']['post_mean']*100:.2f}%)")
-print(f"  Change: {election_tests['t_test']['pct_change']:+.2f}%")
-print(f"  Cohen's d: {election_tests['t_test']['cohens_d']:.4f} ({election_tests['t_test']['effect_interpretation']})")
-print(f"Chi-square: χ²={election_tests['chi_square']['chi2_statistic']:.4f}, p={election_tests['chi_square']['p_value']:.4e}")
-print(f"  Cramér's V: {election_tests['chi_square']['cramers_v']:.4f} ({election_tests['chi_square']['effect_interpretation']})")
-print()
-
-print("--- COALITION CUTOFF ---")
-coalition_tests = run_statistical_tests('post_coalition', 'Coalition')
-print(f"t-test: t={coalition_tests['t_test']['t_statistic']:.4f}, p={coalition_tests['t_test']['p_value']:.4e}")
-print(f"  Pre: {coalition_tests['t_test']['pre_mean']:.4f} ({coalition_tests['t_test']['pre_mean']*100:.2f}%)")
-print(f"  Post: {coalition_tests['t_test']['post_mean']:.4f} ({coalition_tests['t_test']['post_mean']*100:.2f}%)")
-print(f"  Change: {coalition_tests['t_test']['pct_change']:+.2f}%")
-print(f"  Cohen's d: {coalition_tests['t_test']['cohens_d']:.4f} ({coalition_tests['t_test']['effect_interpretation']})")
-print(f"Chi-square: χ²={coalition_tests['chi_square']['chi2_statistic']:.4f}, p={coalition_tests['chi_square']['p_value']:.4e}")
-print(f"  Cramér's V: {coalition_tests['chi_square']['cramers_v']:.4f} ({coalition_tests['chi_square']['effect_interpretation']})")
-print()
-
-results['election']['tests'] = election_tests
-results['coalition']['tests'] = coalition_tests
-
-# ==============================================================================
-# 4. COMPARISON VISUALIZATION
-# ==============================================================================
-
-print("Creating comparison visualization...\n")
-
-fig, axes = plt.subplots(2, 2, figsize=(14, 10))
-
-colors_pre = '#3498db'
-colors_post = '#e74c3c'
-
-# Function to create bar plot
-def create_comparison_plot(ax, data, title, show_values=True):
-    x = np.arange(len(data))
-    width = 0.35
-
-    bars = ax.bar(x, data['mean_prop'], width,
-                   yerr=1.96 * data['se_prop'],
-                   color=[colors_pre if 'Pre' in p else colors_post for p in data['period']],
-                   alpha=0.8, capsize=5, edgecolor='black', linewidth=1.5)
+    # % change annotation above each pair
+    for i, (pv, ppv, pe, ppe, ch) in enumerate(zip(pre_vals, post_vals,
+                                                     pre_errs, post_errs,
+                                                     pct_changes)):
+        y_top = max(pv+pe, ppv+ppe) + 0.025
+        ax.text(i, y_top, f"Δ {ch:+.1f}%",
+                ha="center", fontsize=9, style="italic",
+                bbox=dict(boxstyle="round,pad=0.3", facecolor="white",
+                          edgecolor="#aaa", alpha=0.85))
 
     ax.set_xticks(x)
-    ax.set_xticklabels(data['period'], rotation=0, ha='center')
-    ax.set_ylabel('Proportion of Populist Tweets', fontweight='bold')
-    ax.set_title(title, fontweight='bold', pad=10)
-    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: f'{y:.1%}'))
-    ax.grid(axis='y', alpha=0.3)
+    ax.set_xticklabels(parties, fontsize=11)
+    ax.yaxis.set_major_formatter(mtick.PercentFormatter(xmax=1, decimals=1))
+    ax.set_ylabel("Proportion of Populist Tweets", fontweight="bold")
+    ax.set_title(title, fontweight="bold", pad=10)
+    ax.legend(fontsize=9, loc="upper left")
+    ax.grid(axis="y", alpha=0.3, linestyle="--")
+    ax.set_axisbelow(True)
 
-    if show_values:
-        for i, (idx, row) in enumerate(data.iterrows()):
-            ax.text(i, row['mean_prop'] + 1.96 * row['se_prop'] + 0.003,
-                   f"{row['mean_prop']:.2%}",
-                   ha='center', va='bottom', fontweight='bold', fontsize=9)
+# ==============================================================================
+# COMPARISON 1 — All pre vs Radicalized and Radical Populism post
+# ==============================================================================
 
-# Plot 1: Election overall
-ax1 = axes[0, 0]
-create_comparison_plot(ax1, election_summaries['overall'], 'Election Cutoff: Overall')
+print("\n" + "─"*60)
+print("COMPARISON 1: All parties pre vs Radicalized and Radical Populism post")
+print("─"*60)
 
-# Plot 2: Coalition overall
-ax2 = axes[0, 1]
-create_comparison_plot(ax2, coalition_summaries['overall'], 'Coalition Cutoff: Overall')
+series_all_pre = data[data["post_election"] == 0]["pop"].astype(float)
+series_rad_post = data[(data["post_election"] == 1) &
+                       data["radicalized_group"]]["pop"].astype(float)
 
-# Plot 3: Election by party
-ax3 = axes[1, 0]
-election_party = election_summaries['party']
-for period in election_party['period'].unique():
-    period_data = election_party[election_party['period'] == period]
-    color = colors_pre if 'Pre' in period else colors_post
-    x = np.arange(len(period_data))
-    if 'Pre' in period:
-        x_offset = -0.2
-    else:
-        x_offset = 0.2
-    ax3.bar(x + x_offset, period_data['mean_prop'], 0.35,
-            yerr=1.96 * period_data['se_prop'],
-            label=period, color=color, alpha=0.8,
-            capsize=3, edgecolor='black', linewidth=1.5)
-ax3.set_xticks(range(len(period_data)))
-ax3.set_xticklabels(period_data['party_group'])
-ax3.set_ylabel('Proportion of Populist Tweets', fontweight='bold')
-ax3.set_title('Election: By Party', fontweight='bold', pad=10)
-ax3.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: f'{y:.1%}'))
-ax3.legend(fontsize=8)
-ax3.grid(axis='y', alpha=0.3)
+c1_stats = run_tests(series_all_pre, series_rad_post)
+c1_summary = summary_stats(series_all_pre, series_rad_post,
+                           "Pre-election\n(All parties)",
+                           "Post-election\nRadicalized & Radical Populism")
 
-# Plot 4: Coalition by party
-ax4 = axes[1, 1]
-coalition_party = coalition_summaries['party']
-for period in coalition_party['period'].unique():
-    period_data = coalition_party[coalition_party['period'] == period]
-    color = colors_pre if 'Pre' in period else colors_post
-    x = np.arange(len(period_data))
-    if 'Pre' in period:
-        x_offset = -0.2
-    else:
-        x_offset = 0.2
-    ax4.bar(x + x_offset, period_data['mean_prop'], 0.35,
-            yerr=1.96 * period_data['se_prop'],
-            label=period, color=color, alpha=0.8,
-            capsize=3, edgecolor='black', linewidth=1.5)
-ax4.set_xticks(range(len(period_data)))
-ax4.set_xticklabels(period_data['party_group'])
-ax4.set_ylabel('Proportion of Populist Tweets', fontweight='bold')
-ax4.set_title('Coalition: By Party', fontweight='bold', pad=10)
-ax4.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: f'{y:.1%}'))
-ax4.legend(fontsize=8)
-ax4.grid(axis='y', alpha=0.3)
+print(f"  Pre  (all):      {c1_stats['pre_mean']:.4f}  n={len(series_all_pre):,}")
+print(f"  Post (rad):      {c1_stats['post_mean']:.4f}  n={len(series_rad_post):,}")
+print(f"  Change:          {c1_stats['pct_change']:+.2f}%")
+print(f"  t={c1_stats['t']:.4f}  p={c1_stats['t_p']:.2e}  d={c1_stats['cohens_d']:.4f}")
+print(f"  χ²={c1_stats['chi2']:.4f}  p={c1_stats['chi_p']:.2e}  V={c1_stats['cramers_v']:.4f}")
 
+# ── Plot 3a ──────────────────────────────────────────────────────────────────
+print("\nPlot 3a: Comparison 1 overall...")
+fig, ax = plt.subplots(figsize=(7, 6))
+bar_two(ax, c1_summary, "Radicalized and Radical Populism:\nOverall Before vs After Election")
+# annotation
+ax.text(0.5, -0.14,
+        f"Δ {c1_stats['pct_change']:+.1f}%  |  t={c1_stats['t']:.2f}, p={c1_stats['t_p']:.2e}"
+        f"  |  d={c1_stats['cohens_d']:.3f}",
+        transform=ax.transAxes, ha="center", fontsize=9,
+        style="italic", color="#555")
 plt.tight_layout()
-plt.savefig('output/plot_dual_cutoff_comparison.png', dpi=300, bbox_inches='tight')
+plt.savefig("output/plot3a_comp1_overall.png", bbox_inches="tight")
 plt.close()
-
-print("✓ Comparison plot saved\n")
+print("✓ output/plot3a_comp1_overall.png")
 
 # ==============================================================================
-# 5. SAVE RESULTS
+# COMPARISON 1b — Likud vs PRR legislators (named, expanding group)
 # ==============================================================================
 
-print("Saving results...")
-with open("output/dual_cutoff_results.pkl", "wb") as f:
+print("\n" + "─"*60)
+print("COMPARISON 1b: Likud  vs  PRR legislators (by screen_name)")
+print("─"*60)
+
+# Likud (party-based)
+likud_pre  = data[(data["post_election"] == 0) & (data["party"] == "Likud")]["pop"].astype(float)
+likud_post = data[(data["post_election"] == 1) & (data["party"] == "Likud")]["pop"].astype(float)
+
+# PRR legislators — DIFFERENT COMPOSITION pre vs post
+prr_pre  = data[(data["post_election"] == 0) & data["prr_leg_pre"]]["pop"].astype(float)
+prr_post = data[(data["post_election"] == 1) & data["prr_leg_post"]]["pop"].astype(float)
+
+likud_ch = (likud_post.mean() - likud_pre.mean()) / likud_pre.mean() * 100
+prr_ch   = (prr_post.mean()   - prr_pre.mean())   / prr_pre.mean()   * 100
+
+prr_tests = run_tests(prr_pre, prr_post)
+
+print(f"  Likud  pre: {likud_pre.mean():.4f}  post: {likud_post.mean():.4f}  Δ {likud_ch:+.2f}%")
+print(f"  PRR    pre: {prr_pre.mean():.4f}  post: {prr_post.mean():.4f}  Δ {prr_ch:+.2f}%")
+print(f"  PRR t={prr_tests['t']:.4f}  p={prr_tests['t_p']:.2e}  d={prr_tests['cohens_d']:.4f}")
+print(f"  (PRR pre n={len(prr_pre):,} [{', '.join(PRR_PRE_NAMES)}])")
+print(f"  (PRR post n={len(prr_post):,} [{', '.join(PRR_POST_NAMES)}])")
+
+# ── Plot 3b ──────────────────────────────────────────────────────────────────
+print("\nPlot 3b: Likud vs PRR legislators...")
+fig, ax = plt.subplots(figsize=(9, 6))
+bar_grouped(ax,
+            parties=["Likud", "PRR Legislators"],
+            pre_vals =[likud_pre.mean(),  prr_pre.mean()],
+            post_vals=[likud_post.mean(), prr_post.mean()],
+            pre_errs =[1.96*likud_pre.std()/np.sqrt(len(likud_pre)),
+                       1.96*prr_pre.std()/np.sqrt(len(prr_pre))],
+            post_errs=[1.96*likud_post.std()/np.sqrt(len(likud_post)),
+                       1.96*prr_post.std()/np.sqrt(len(prr_post))],
+            title="Radicalized and Radical Populism: Likud vs PRR Legislators",
+            pct_changes=[likud_ch, prr_ch])
+
+# footnote explaining the changing group
+fig.text(0.5, 0.01,
+         f"PRR legislators — Pre: {', '.join(PRR_PRE_NAMES)}\n"
+         f"Post adds: rothmar, itamarbengvir",
+         ha="center", fontsize=7.5, color="#666",
+         style="italic")
+plt.subplots_adjust(bottom=0.12)
+plt.savefig("output/plot3b_comp1_by_group.png", bbox_inches="tight")
+plt.close()
+print("✓ output/plot3b_comp1_by_group.png")
+
+# ==============================================================================
+# COMPARISON 2 — PRRPs in Change Coalition (Rightwards + Israel Our Home)
+# ==============================================================================
+
+print("\n" + "─"*60)
+print("COMPARISON 2: PRRPs in Change Coalition — pre vs post election")
+print("─"*60)
+
+cc = data[data["change_coalition_group"]]
+cc_pre  = cc[cc["post_election"] == 0]["pop"].astype(float)
+cc_post = cc[cc["post_election"] == 1]["pop"].astype(float)
+
+c2_stats = run_tests(cc_pre, cc_post)
+c2_summary = summary_stats(cc_pre, cc_post,
+                           "Pre-election\nPRRPs in Change Coalition",
+                           "Post-election\nPRRPs in Change Coalition")
+
+print(f"  Pre:    {c2_stats['pre_mean']:.4f}  n={len(cc_pre):,}")
+print(f"  Post:   {c2_stats['post_mean']:.4f}  n={len(cc_post):,}")
+print(f"  Change: {c2_stats['pct_change']:+.2f}%")
+print(f"  t={c2_stats['t']:.4f}  p={c2_stats['t_p']:.2e}  d={c2_stats['cohens_d']:.4f}")
+print(f"  χ²={c2_stats['chi2']:.4f}  p={c2_stats['chi_p']:.2e}  V={c2_stats['cramers_v']:.4f}")
+
+# ── Plot 3c ──────────────────────────────────────────────────────────────────
+print("\nPlot 3c: Comparison 2 overall...")
+fig, ax = plt.subplots(figsize=(7, 6))
+bar_two(ax, c2_summary, "PRRPs in Change Coalition:\nOverall Before vs After Election")
+ax.text(0.5, -0.14,
+        f"Δ {c2_stats['pct_change']:+.1f}%  |  t={c2_stats['t']:.2f}, p={c2_stats['t_p']:.2e}"
+        f"  |  d={c2_stats['cohens_d']:.3f}",
+        transform=ax.transAxes, ha="center", fontsize=9,
+        style="italic", color="#555")
+plt.tight_layout()
+plt.savefig("output/plot3c_comp2_overall.png", bbox_inches="tight")
+plt.close()
+print("✓ output/plot3c_comp2_overall.png")
+
+# ==============================================================================
+# COMPARISON 2b — Rightwards vs Israel Our Home
+# ==============================================================================
+
+print("\n" + "─"*60)
+print("COMPARISON 2b: Rightwards vs Israel Our Home (party detail)")
+print("─"*60)
+
+right_pre  = data[(data["post_election"] == 0) & (data["party"] == "Rightwards")]["pop"].astype(float)
+right_post = data[(data["post_election"] == 1) & (data["party"] == "Rightwards")]["pop"].astype(float)
+ioh_pre    = data[(data["post_election"] == 0) & (data["party"] == "Israel Our Home")]["pop"].astype(float)
+ioh_post   = data[(data["post_election"] == 1) & (data["party"] == "Israel Our Home")]["pop"].astype(float)
+
+right_ch = (right_post.mean() - right_pre.mean()) / right_pre.mean() * 100
+ioh_ch   = (ioh_post.mean()   - ioh_pre.mean())   / ioh_pre.mean()   * 100
+
+print(f"  Rightwards    pre: {right_pre.mean():.4f}  post: {right_post.mean():.4f}  Δ {right_ch:+.2f}%")
+print(f"  Israel Our Home pre: {ioh_pre.mean():.4f}  post: {ioh_post.mean():.4f}  Δ {ioh_ch:+.2f}%")
+
+# ── Plot 3d ──────────────────────────────────────────────────────────────────
+print("\nPlot 3d: Rightwards vs Israel Our Home...")
+fig, ax = plt.subplots(figsize=(9, 6))
+bar_grouped(ax,
+            parties=["Rightwards", "Israel Our Home"],
+            pre_vals =[right_pre.mean(),  ioh_pre.mean()],
+            post_vals=[right_post.mean(), ioh_post.mean()],
+            pre_errs =[1.96*right_pre.std()/np.sqrt(len(right_pre)),
+                       1.96*ioh_pre.std()/np.sqrt(len(ioh_pre))],
+            post_errs=[1.96*right_post.std()/np.sqrt(len(right_post)),
+                       1.96*ioh_post.std()/np.sqrt(len(ioh_post))],
+            title="PRRPs in Change Coalition: Rightwards vs Israel Our Home",
+            pct_changes=[right_ch, ioh_ch])
+plt.tight_layout()
+plt.savefig("output/plot3d_comp2_by_party.png", bbox_inches="tight")
+plt.close()
+print("✓ output/plot3d_comp2_by_party.png")
+
+# ==============================================================================
+# SAVE RESULTS + DOCUMENTATION
+# ==============================================================================
+
+results = {
+    "comparison1":    {"stats": c1_stats,   "summary": c1_summary},
+    "comparison1b":   {"stats": prr_tests,
+                       "likud_pre": likud_pre.mean(), "likud_post": likud_post.mean(),
+                       "prr_pre": prr_pre.mean(),     "prr_post":  prr_post.mean()},
+    "comparison2":    {"stats": c2_stats,   "summary": c2_summary},
+    "right_ioh":      {"right_pre": right_pre.mean(), "right_post": right_post.mean(),
+                       "ioh_pre":   ioh_pre.mean(),   "ioh_post":   ioh_post.mean()},
+}
+with open("output/comparison_results.pkl", "wb") as f:
     pickle.dump(results, f)
-print("Results saved\n")
 
-# ==============================================================================
-# 6. CREATE COMPREHENSIVE MARKDOWN DOCUMENTATION
-# ==============================================================================
-
-print("Creating documentation...\n")
-
-def df_to_markdown(df):
-    lines = []
-    lines.append("| " + " | ".join(df.columns) + " |")
-    lines.append("| " + " | ".join(["---"] * len(df.columns)) + " |")
-    for _, row in df.iterrows():
-        lines.append("| " + " | ".join(str(x) for x in row) + " |")
-    return "\n".join(lines)
-
-md_content = f"""# Stage 3: Dual Cutoff Statistical Analysis
+md = f"""# Stage 3: Before/After Analysis — Election Cutoff
 
 **Date:** {datetime.now().strftime("%B %d, %Y")}
-
-**Purpose:** Compare populist rhetoric using **TWO** cutoff dates to test competing hypotheses.
-
----
-
-## Competing Hypotheses
-
-### Hypothesis 1: Election Effect (March 23, 2021)
-Change in populist rhetoric occurs at the **election date**, when electoral incentives shift.
-
-### Hypothesis 2: Coalition Effect (June 13, 2021)
-Change occurs at **coalition formation**, when government responsibility begins.
+**Election cutoff:** March 23, 2021
 
 ---
 
-## Executive Summary
+## Comparison 1: All Parties Pre vs Radicalized and Radical Populism Post
 
-### Election Cutoff (March 23, 2021)
+| Period | Tweets | Populist | Proportion |
+|---|---|---|---|
+| Pre-election (all parties) | {len(series_all_pre):,} | {int(series_all_pre.sum()):,} | {c1_stats['pre_mean']:.4f} ({c1_stats['pre_mean']*100:.2f}%) |
+| Post-election (Likud + Religious Zionism) | {len(series_rad_post):,} | {int(series_rad_post.sum()):,} | {c1_stats['post_mean']:.4f} ({c1_stats['post_mean']*100:.2f}%) |
 
-**Overall Change:**
-- Pre-election: {results['election']['tests']['t_test']['pre_mean']:.4f} ({results['election']['tests']['t_test']['pre_mean']*100:.2f}%)
-- Post-election: {results['election']['tests']['t_test']['post_mean']:.4f} ({results['election']['tests']['t_test']['post_mean']*100:.2f}%)
-- **Change: {results['election']['tests']['t_test']['pct_change']:+.2f}%**
-- **Statistical significance:** p = {results['election']['tests']['t_test']['p_value']:.4e}
-- **Effect size:** Cohen's d = {results['election']['tests']['t_test']['cohens_d']:.4f} ({results['election']['tests']['t_test']['effect_interpretation']})
-
-### Coalition Cutoff (June 13, 2021)
-
-**Overall Change:**
-- Pre-coalition: {results['coalition']['tests']['t_test']['pre_mean']:.4f} ({results['coalition']['tests']['t_test']['pre_mean']*100:.2f}%)
-- Post-coalition: {results['coalition']['tests']['t_test']['post_mean']:.4f} ({results['coalition']['tests']['t_test']['post_mean']*100:.2f}%)
-- **Change: {results['coalition']['tests']['t_test']['pct_change']:+.2f}%**
-- **Statistical significance:** p = {results['coalition']['tests']['t_test']['p_value']:.4e}
-- **Effect size:** Cohen's d = {results['coalition']['tests']['t_test']['cohens_d']:.4f} ({results['coalition']['tests']['t_test']['effect_interpretation']})
+**Change: {c1_stats['pct_change']:+.2f}%**
+- t = {c1_stats['t']:.4f}, p = {c1_stats['t_p']:.2e}
+- Cohen's d = {c1_stats['cohens_d']:.4f}
+- χ² = {c1_stats['chi2']:.4f}, p = {c1_stats['chi_p']:.2e}, Cramér's V = {c1_stats['cramers_v']:.4f}
 
 ---
 
-## Summary Tables
+## Comparison 1b: Likud vs PRR Legislators (by screen_name)
 
-### Election Cutoff: Overall
+| Group | Period | Legislators | Proportion | Change |
+|---|---|---|---|---|
+| Likud | Pre | (all Likud) | {likud_pre.mean():.4f} | — |
+| Likud | Post | (all Likud) | {likud_post.mean():.4f} | {likud_ch:+.2f}% |
+| PRR legislators | Pre | bezalelsm, michalwoldiger, ofir_sofer, oritstrock | {prr_pre.mean():.4f} | — |
+| PRR legislators | Post | + rothmar, itamarbengvir | {prr_post.mean():.4f} | {prr_ch:+.2f}% |
 
-{df_to_markdown(election_summaries['overall'])}
-
-### Election Cutoff: By Party
-
-{df_to_markdown(election_summaries['party'])}
-
-### Coalition Cutoff: Overall
-
-{df_to_markdown(coalition_summaries['overall'])}
-
-### Coalition Cutoff: By Party
-
-{df_to_markdown(coalition_summaries['party'])}
+PRR t = {prr_tests['t']:.4f}, p = {prr_tests['t_p']:.2e}, d = {prr_tests['cohens_d']:.4f}
 
 ---
 
-## Statistical Tests: Election Cutoff
+## Comparison 2: PRRPs in Change Coalition
 
-### Two-Sample t-test
+| Period | Tweets | Populist | Proportion |
+|---|---|---|---|
+| Pre-election | {len(cc_pre):,} | {int(cc_pre.sum()):,} | {c2_stats['pre_mean']:.4f} ({c2_stats['pre_mean']*100:.2f}%) |
+| Post-election | {len(cc_post):,} | {int(cc_post.sum()):,} | {c2_stats['post_mean']:.4f} ({c2_stats['post_mean']*100:.2f}%) |
 
-- **t-statistic:** {results['election']['tests']['t_test']['t_statistic']:.4f}
-- **p-value:** {results['election']['tests']['t_test']['p_value']:.4e}
-- **Difference:** {results['election']['tests']['t_test']['difference']:.4f} ({results['election']['tests']['t_test']['pct_change']:+.2f}%)
-- **Cohen's d:** {results['election']['tests']['t_test']['cohens_d']:.4f} ({results['election']['tests']['t_test']['effect_interpretation']})
+**Change: {c2_stats['pct_change']:+.2f}%**
+- t = {c2_stats['t']:.4f}, p = {c2_stats['t_p']:.2e}
+- Cohen's d = {c2_stats['cohens_d']:.4f}
+- χ² = {c2_stats['chi2']:.4f}, p = {c2_stats['chi_p']:.2e}, Cramér's V = {c2_stats['cramers_v']:.4f}
 
-### Chi-Square Test
-
-- **χ² statistic:** {results['election']['tests']['chi_square']['chi2_statistic']:.4f}
-- **p-value:** {results['election']['tests']['chi_square']['p_value']:.4e}
-- **Cramér's V:** {results['election']['tests']['chi_square']['cramers_v']:.4f} ({results['election']['tests']['chi_square']['effect_interpretation']})
-
----
-
-## Statistical Tests: Coalition Cutoff
-
-### Two-Sample t-test
-
-- **t-statistic:** {results['coalition']['tests']['t_test']['t_statistic']:.4f}
-- **p-value:** {results['coalition']['tests']['t_test']['p_value']:.4e}
-- **Difference:** {results['coalition']['tests']['t_test']['difference']:.4f} ({results['coalition']['tests']['t_test']['pct_change']:+.2f}%)
-- **Cohen's d:** {results['coalition']['tests']['t_test']['cohens_d']:.4f} ({results['coalition']['tests']['t_test']['effect_interpretation']})
-
-### Chi-Square Test
-
-- **χ² statistic:** {results['coalition']['tests']['chi_square']['chi2_statistic']:.4f}
-- **p-value:** {results['coalition']['tests']['chi_square']['p_value']:.4e}
-- **Cramér's V:** {results['coalition']['tests']['chi_square']['cramers_v']:.4f} ({results['coalition']['tests']['chi_square']['effect_interpretation']})
+| Party | Pre | Post | Change |
+|---|---|---|---|
+| Rightwards | {right_pre.mean():.4f} | {right_post.mean():.4f} | {right_ch:+.2f}% |
+| Israel Our Home | {ioh_pre.mean():.4f} | {ioh_post.mean():.4f} | {ioh_ch:+.2f}% |
 
 ---
 
-## Visualization
+## Output Plots
 
-![Dual Cutoff Comparison](plot_dual_cutoff_comparison.png)
-
-**Description:** Four-panel comparison showing overall and party-level effects for both cutoff dates.
-
----
-
-## Interpretation & Discussion Points
-
-### Which Cutoff Shows Stronger Evidence?
-
-Compare:
-1. **Magnitude of change:** Election {results['election']['tests']['t_test']['pct_change']:+.2f}% vs Coalition {results['coalition']['tests']['t_test']['pct_change']:+.2f}%
-2. **Effect sizes:** Election d={results['election']['tests']['t_test']['cohens_d']:.4f} vs Coalition d={results['coalition']['tests']['t_test']['cohens_d']:.4f}
-3. **Visual inspection:** See Stage 2 time series plots
-
-### Theoretical Implications
-
-- **If election effect stronger:** Supports electoral incentive mechanism
-- **If coalition effect stronger:** Supports government responsibility mechanism
-- **If both significant:** Suggests gradual transition period
-
----
-
-## Output Files
-
-- **output/dual_cutoff_results.pkl**: Complete statistical results
-- **output/plot_dual_cutoff_comparison.png**: Four-panel comparison visualization
-- **output/dual_cutoff_analysis.md**: This documentation
-
----
-
-**Analysis complete.** Both hypotheses tested - results available for manuscript discussion.
+| File | Content |
+|---|---|
+| plot3a_comp1_overall.png | Comparison 1 — overall bar |
+| plot3b_comp1_by_group.png | Comparison 1 — Likud vs PRR legislators |
+| plot3c_comp2_overall.png | Comparison 2 — overall bar |
+| plot3d_comp2_by_party.png | Comparison 2 — Rightwards vs Israel Our Home |
 """
 
-with open("output/dual_cutoff_analysis.md", "w") as f:
-    f.write(md_content)
+with open("output/before_after_results.md", "w") as f:
+    f.write(md)
 
-print("Documentation saved")
+print("\n✓ output/comparison_results.pkl saved")
+print("✓ output/before_after_results.md saved")
 print("\n=== STAGE 3 COMPLETE ===")
-print("Dual cutoff analysis complete!")
-print("- Election cutoff: tested")
-print("- Coalition cutoff: tested")
-print("- Comparison visualization: created")
-print("- Full documentation: generated")
-print(f"\nKey finding: Both cutoffs show significant effects.")
-print(f"  Election: {results['election']['tests']['t_test']['pct_change']:+.1f}% change (d={results['election']['tests']['t_test']['cohens_d']:.3f})")
-print(f"  Coalition: {results['coalition']['tests']['t_test']['pct_change']:+.1f}% change (d={results['coalition']['tests']['t_test']['cohens_d']:.3f})")

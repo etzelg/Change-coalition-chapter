@@ -1,137 +1,108 @@
-# Populist Rhetoric Analysis: Israeli Coalition Change 2021
+# Populist Rhetoric: Election Cutoff Analysis
+
+**Branch:** `claude/election-cutoff-analysis-QqAoc`
+**Cutoff:** Election — March 23, 2021
+
+---
 
 ## Overview
 
-This repository contains a complete analysis of populist rhetoric changes among Israeli legislators around two critical dates in 2021:
-- **Election**: March 23, 2021
-- **Coalition Formation**: June 13, 2021
+Analyses whether the 2021 Israeli election produced differential changes in
+populist rhetoric across two theoretically distinct blocs:
 
-**Dataset**: Israeli legislator tweets from 2020-2022, excluding "Israel Our Home" party.
+1. **Radicalized and Radical Populism** — Likud + Religious Zionism (Netanyahu bloc)
+2. **PRRPs in Change Coalition** — Rightwards + Israel Our Home (anti-Netanyahu)
+
+All 7 parties are included in the dataset (no exclusions).
 
 ---
 
 ## Key Findings
 
-### Dual Cutoff Analysis
+### Comparison 1 — All parties pre vs "Radicalized and Radical Populism" post
 
-**Election Cutoff (March 23, 2021):**
-- Pre-election: 3.69% populist tweets
-- Post-election: 6.74% populist tweets
-- **Change: +82.8%** (Cohen's d = 0.134, p < 0.001)
+| | Proportion | N |
+|---|---|---|
+| Pre-election (all 7 parties) | 3.92% | 31,404 |
+| Post-election (Likud + Religious Zionism) | 7.41% | 37,082 |
+| **Change** | **+89.1%** | |
 
-**Coalition Cutoff (June 13, 2021):**
-- Pre-coalition: 4.21% populist tweets
-- Post-coalition: 6.80% populist tweets
-- **Change: +61.8%** (Cohen's d = 0.114, p < 0.001)
+t = −19.52, p < 0.001, Cohen's d = 0.150
 
-**Conclusion**: The **election date shows a stronger effect**, suggesting populist rhetoric changes are driven more by electoral incentives than coalition formation.
+**Party detail:**
+- Likud: +128.8% (3.63% → 8.31%)
+- PRR legislators: +15.0% (5.66% → 6.51%)
+  — Pre: bezalelsm, michalwoldiger, ofir_sofer, oritstrock
+  — Post adds: rothmar, itamarbengvir
 
-### Party-Level Effects (Election Cutoff)
+### Comparison 2 — PRRPs in Change Coalition pre vs post
 
-**Likud:**
-- **Change: +128.8%** (3.63% → 8.31%)
-- Most dramatic increase in populist rhetoric
+| | Proportion | N |
+|---|---|---|
+| Pre-election | 3.80% | 10,480 |
+| Post-election | 2.01% | 7,510 |
+| **Change** | **−47.1%** | |
 
-**PRRPs (Populist Radical Right Parties):**
-- **Change: +46.4%** (3.77% → 5.51%)
-- More modest but still significant increase
+t = 6.88, p < 0.001, Cohen's d = −0.104
+
+**Party detail:**
+- Rightwards: −32.9% (2.77% → 1.86%)
+- Israel Our Home: −57.9% (5.54% → 2.33%)
+
+**Interpretation:** The Change Coalition parties *reduced* populist rhetoric
+after the election, the inverse of the Netanyahu bloc — consistent with
+government responsibility effects.
 
 ---
 
 ## Repository Structure
 
 ```
-├── 01_data_prep.py           # Python: Data preparation
-├── 01_data_prep.R            # R: Data preparation (for reproducibility)
-├── 02_time_series_plots.py   # Python: Time series visualizations
-├── 02_time_series_plots.R    # R: Time series visualizations
-├── 03_before_after.py        # Python: Dual cutoff statistical analysis
-├── 03_before_after.R         # R: Dual cutoff analysis
-├── 04_election_party_plot.py # Python: Standalone election party plot
-├── causal7_dat.csv          # Raw data
-├── output/                   # All analysis outputs
-│   ├── analysis_data.pkl              # Cleaned dataset (Python)
-│   ├── analysis_data.csv              # Cleaned dataset (for R)
-│   ├── data_summary_stage1.md         # Stage 1 documentation
-│   ├── summary_stats_stage1.pkl       # Stage 1 statistics
-│   ├── plot1_overall_trend.png        # Overall time series (both dates)
-│   ├── plot2_by_party.png             # By party time series (both dates)
-│   ├── plots_stage2.md                # Stage 2 documentation
-│   ├── plot_dual_cutoff_comparison.png     # Python: 4-panel comparison
-│   ├── dual_cutoff_analysis.md        # Python: Stage 3 documentation
-│   ├── dual_cutoff_results.pkl        # Python: Complete statistical results
-│   ├── plot_dual_cutoff_comparison_R.png   # R: 4-panel comparison
-│   ├── dual_cutoff_analysis_R.md      # R: Stage 3 documentation
-│   ├── dual_cutoff_results.rds        # R: Complete statistical results
-│   ├── plot_election_party_standalone.png  # Standalone election plot
-│   └── election_party_plot.md         # Standalone plot documentation
-└── README.md                 # This file
+├── 01_data_prep.py             # Data preparation (Python)
+├── 01_data_prep.R              # Data preparation (R)
+├── 02_time_series_plots.py     # Time series plots (Python)
+├── 02_time_series_plots.R      # Time series plots (R)
+├── 03_before_after.py          # Before/after analysis (Python)
+├── 03_before_after.R           # Before/after analysis (R)
+├── causal7_dat.csv             # Raw data
+└── output/
+    ├── analysis_data.pkl/.csv       # Cleaned dataset
+    ├── data_summary.md              # Stage 1 documentation
+    ├── plot2a_radicalized_trend.png # Time series: all vs radicalized
+    ├── plot2b_change_coalition_trend.png  # Time series: Rightwards vs IOH
+    ├── plot3a_comp1_overall.png     # Bar: comparison 1 overall
+    ├── plot3b_comp1_by_group.png    # Bar: Likud vs PRR legislators
+    ├── plot3c_comp2_overall.png     # Bar: comparison 2 overall
+    ├── plot3d_comp2_by_party.png    # Bar: Rightwards vs Israel Our Home
+    ├── comparison_results.pkl       # Python results object
+    └── before_after_results.md      # Full statistical tables
 ```
 
 ---
 
-## Analysis Pipeline
+## Running the Analysis
 
-### Stage 1: Data Preparation
-- Filters data from 2020-01-01 onwards
-- **Excludes "Israel Our Home" party**
-- Creates temporal variables for both cutoff dates
-- Final dataset: 69,660 observations, 50 legislators
-
-**Run**: `python3 01_data_prep.py` or `Rscript 01_data_prep.R`
-
-### Stage 2: Time Series Visualizations
-- Creates 2 plots showing populist rhetoric over time
-- **Both election and coalition dates marked**
-- 4-week rolling averages for smoothing
-
-**Run**: `python3 02_time_series_plots.py` or `Rscript 02_time_series_plots.R`
-
-### Stage 3: Dual Cutoff Statistical Analysis
-- Runs t-tests and chi-square tests for **BOTH** cutoff dates
-- Compares effect sizes to determine which hypothesis is supported
-- Creates four-panel comparison visualization
-
-**Run**: `python3 03_before_after.py` or `Rscript 03_before_after.R`
-
-### Stage 4: Standalone Election Party Plot
-- Publication-ready focused plot showing ONLY election effects by party
-- Highlights dramatic Likud increase (+128.8%) vs moderate PRRPs increase (+46.4%)
-- Clean, single-panel design suitable for main text figures
-
-**Run**: `python3 04_election_party_plot.py`
-
-**Note**: R is not installed on this system. The R script (`03_before_after.R`) has been created and should be run on your local machine with R installed. The CSV data file has been prepared in `output/analysis_data.csv` for R to read.
-
----
-
-## Requirements
-
-### Python
 ```bash
-pip install pandas numpy scipy matplotlib seaborn
+python3 01_data_prep.py
+python3 02_time_series_plots.py
+python3 03_before_after.py
 ```
 
-### R
+R scripts require: `tidyverse`, `effsize`, `zoo`
 ```r
-install.packages(c("tidyverse", "lubridate", "effsize", "gridExtra"))
+Rscript 01_data_prep.R
+Rscript 02_time_series_plots.R
+Rscript 03_before_after.R
 ```
+R input: `output/analysis_data.csv` (created by Python Stage 1)
 
 ---
 
-## Reproducibility
+## Party Groupings
 
-Both Python (`.py`) and R (`.R`) scripts are provided for complete reproducibility:
-- **Python scripts**: Run immediately, generate all outputs
-- **R scripts**: Parallel implementation for publication/verification
-
-All outputs are saved to the `output/` directory.
-
----
-
-## Citation
-
-If you use this analysis, please cite appropriately.
-
-**Analysis completed**: February 13, 2026
-**Session**: https://claude.ai/code/session_01NJkvGCZ7KeVPhtQ2uwBDFk
+| Group | Parties / Screen names |
+|---|---|
+| Radicalized and Radical Populism (post) | Likud, Religious Zionism |
+| PRRPs in Change Coalition | Rightwards, Israel Our Home |
+| PRR legislators (pre) | bezalelsm, michalwoldiger, ofir_sofer, oritstrock |
+| PRR legislators (post) | above + rothmar, itamarbengvir |
