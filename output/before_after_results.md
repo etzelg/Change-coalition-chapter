@@ -5,17 +5,17 @@
 
 ---
 
-## Comparison 1: All Parties Pre vs Radicalized and Radical Populism Post
+## Comparison 1: Netanyahu's Bloc (Likud + Religious Zionism) Pre vs Post
 
 | Period | Tweets | Populist | Proportion |
 |---|---|---|---|
-| Pre-election (all parties) | 31,404 | 1,230 | 0.0392 (3.92%) |
-| Post-election (Likud + Religious Zionism) | 37,082 | 2,747 | 0.0741 (7.41%) |
+| Pre-election (Netanyahu's bloc) | 16,822 | 623 | 0.0370 (3.70%) |
+| Post-election (Netanyahu's bloc) | 37,082 | 2,747 | 0.0741 (7.41%) |
 
-**Change: +89.14%**
-- t = -19.5192, p = 1.28e-84
-- Cohen's d = 0.1497
-- χ² = 378.2628, p = 2.97e-84, Cramér's V = 0.0743
+**Change: +100.03%**
+- t = -16.5018, p = 5.03e-61
+- Cohen's d = 0.1534
+- χ² = 270.3185, p = 9.67e-61, Cramér's V = 0.0708
 
 ---
 

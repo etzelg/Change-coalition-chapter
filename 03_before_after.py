@@ -4,8 +4,8 @@
 Stage 3: Before/After Statistical Analysis — Election Cutoff
 ==============================================================================
 Comparison 1 (main):
-  PRE  = ALL 7 parties
-  POST = Likud + Religious Zionism  → "Radicalized and Radical Populism"
+  PRE  = Likud + Religious Zionism (Netanyahu's bloc, pre-election)
+  POST = Likud + Religious Zionism (Netanyahu's bloc, post-election)
 
 Comparison 2 (corollary):
   PRE & POST = Rightwards + Israel Our Home → "PRRPs in Change Coalition"
@@ -145,32 +145,33 @@ def bar_grouped(ax, parties, pre_vals, post_vals, pre_errs, post_errs,
     ax.set_axisbelow(True)
 
 # ==============================================================================
-# COMPARISON 1 — All pre vs Radicalized and Radical Populism post
+# COMPARISON 1 — Netanyahu's bloc (Likud + Religious Zionism) pre vs post
 # ==============================================================================
 
 print("\n" + "─"*60)
-print("COMPARISON 1: All parties pre vs Radicalized and Radical Populism post")
+print("COMPARISON 1: Netanyahu's bloc — Likud + Religious Zionism pre vs post")
 print("─"*60)
 
-series_all_pre = data[data["post_election"] == 0]["pop"].astype(float)
+series_rad_pre  = data[(data["post_election"] == 0) &
+                       data["radicalized_group"]]["pop"].astype(float)
 series_rad_post = data[(data["post_election"] == 1) &
                        data["radicalized_group"]]["pop"].astype(float)
 
-c1_stats = run_tests(series_all_pre, series_rad_post)
-c1_summary = summary_stats(series_all_pre, series_rad_post,
-                           "Pre-election\n(All parties)",
-                           "Post-election\nRadicalized & Radical Populism")
+c1_stats = run_tests(series_rad_pre, series_rad_post)
+c1_summary = summary_stats(series_rad_pre, series_rad_post,
+                           "Netanyahu's Bloc\n(Pre-election)",
+                           "Netanyahu's Bloc\n(Post-election)")
 
-print(f"  Pre  (all):      {c1_stats['pre_mean']:.4f}  n={len(series_all_pre):,}")
-print(f"  Post (rad):      {c1_stats['post_mean']:.4f}  n={len(series_rad_post):,}")
-print(f"  Change:          {c1_stats['pct_change']:+.2f}%")
+print(f"  Pre  (Netanyahu's bloc): {c1_stats['pre_mean']:.4f}  n={len(series_rad_pre):,}")
+print(f"  Post (Netanyahu's bloc): {c1_stats['post_mean']:.4f}  n={len(series_rad_post):,}")
+print(f"  Change:                  {c1_stats['pct_change']:+.2f}%")
 print(f"  t={c1_stats['t']:.4f}  p={c1_stats['t_p']:.2e}  d={c1_stats['cohens_d']:.4f}")
 print(f"  χ²={c1_stats['chi2']:.4f}  p={c1_stats['chi_p']:.2e}  V={c1_stats['cramers_v']:.4f}")
 
 # ── Plot 3a ──────────────────────────────────────────────────────────────────
 print("\nPlot 3a: Comparison 1 overall...")
 fig, ax = plt.subplots(figsize=(7, 6))
-bar_two(ax, c1_summary, "Radicalized and Radical Populism:\nOverall Before vs After Election")
+bar_two(ax, c1_summary, "Populism in Netanyahu's Bloc\nBefore and After 2021 Election")
 # annotation
 ax.text(0.5, -0.14,
         f"Δ {c1_stats['pct_change']:+.1f}%  |  t={c1_stats['t']:.2f}, p={c1_stats['t_p']:.2e}"
@@ -331,12 +332,12 @@ md = f"""# Stage 3: Before/After Analysis — Election Cutoff
 
 ---
 
-## Comparison 1: All Parties Pre vs Radicalized and Radical Populism Post
+## Comparison 1: Netanyahu's Bloc (Likud + Religious Zionism) Pre vs Post
 
 | Period | Tweets | Populist | Proportion |
 |---|---|---|---|
-| Pre-election (all parties) | {len(series_all_pre):,} | {int(series_all_pre.sum()):,} | {c1_stats['pre_mean']:.4f} ({c1_stats['pre_mean']*100:.2f}%) |
-| Post-election (Likud + Religious Zionism) | {len(series_rad_post):,} | {int(series_rad_post.sum()):,} | {c1_stats['post_mean']:.4f} ({c1_stats['post_mean']*100:.2f}%) |
+| Pre-election (Netanyahu's bloc) | {len(series_rad_pre):,} | {int(series_rad_pre.sum()):,} | {c1_stats['pre_mean']:.4f} ({c1_stats['pre_mean']*100:.2f}%) |
+| Post-election (Netanyahu's bloc) | {len(series_rad_post):,} | {int(series_rad_post.sum()):,} | {c1_stats['post_mean']:.4f} ({c1_stats['post_mean']*100:.2f}%) |
 
 **Change: {c1_stats['pct_change']:+.2f}%**
 - t = {c1_stats['t']:.4f}, p = {c1_stats['t_p']:.2e}

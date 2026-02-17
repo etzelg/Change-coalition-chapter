@@ -3,8 +3,8 @@
 ==============================================================================
 Stage 2: Time Series Plots
 ==============================================================================
-Plot 2a: All parties (baseline) vs "Radicalized and Radical Populism"
-         (Likud + Religious Zionism) — election vertical line
+Plot 2a: Netanyahu's bloc (Likud + Religious Zionism) — single trend line
+         with election vertical line
 Plot 2b: Rightwards vs Israel Our Home — election vertical line
 Outputs: output/plot2a_radicalized_trend.png
          output/plot2b_change_coalition_trend.png
@@ -45,26 +45,22 @@ def smooth(series, w=WINDOW):
     return series.rolling(window=w, center=True, min_periods=1).mean()
 
 # ──────────────────────────────────────────────────────────────────────────────
-# PLOT 2a — All parties vs Radicalized and Radical Populism
+# PLOT 2a — Netanyahu's bloc (Likud + Religious Zionism) single trend line
 # ──────────────────────────────────────────────────────────────────────────────
-print("\nPlot 2a: All parties vs Radicalized trend...")
+print("\nPlot 2a: Netanyahu's bloc trend (single line)...")
 
-all_wk  = weekly_prop(data).sort_values("week_from_election")
-rad_wk  = weekly_prop(data[data["radicalized_group"]]).sort_values("week_from_election")
+rad_wk = weekly_prop(data[data["radicalized_group"]]).sort_values("week_from_election")
 
 fig, ax = plt.subplots(figsize=(12, 6))
 
 # scatter dots (faint)
-ax.scatter(all_wk["week_from_election"], all_wk["prop"],
-           alpha=0.18, s=14, color="#7f8c8d")
 ax.scatter(rad_wk["week_from_election"], rad_wk["prop"],
-           alpha=0.18, s=14, color="#e74c3c")
+           alpha=0.18, s=14, color="#c0392b")
 
-# smoothed lines
-ax.plot(all_wk["week_from_election"], smooth(all_wk["prop"]),
-        linewidth=2.5, color="#7f8c8d", label="All parties (pre-election baseline)")
+# single smoothed line
 ax.plot(rad_wk["week_from_election"], smooth(rad_wk["prop"]),
-        linewidth=2.5, color="#e74c3c", label="Radicalized and Radical Populism\n(Likud + Religious Zionism)")
+        linewidth=2.5, color="#c0392b",
+        label="Netanyahu's Bloc (Likud + Religious Zionism)")
 
 # election line
 ax.axvline(x=0, color="#2c3e50", linestyle="--", linewidth=2,
@@ -73,7 +69,7 @@ ax.axvline(x=0, color="#2c3e50", linestyle="--", linewidth=2,
 ax.yaxis.set_major_formatter(mtick.PercentFormatter(xmax=1, decimals=1))
 ax.set_xlabel("Weeks from Election (March 23, 2021)", fontweight="bold")
 ax.set_ylabel("Proportion of Populist Tweets", fontweight="bold")
-ax.set_title("Populist Rhetoric Over Time:\nAll Parties vs Radicalized and Radical Populism",
+ax.set_title("Populism in Netanyahu's Bloc Before and After 2021 Election",
              fontweight="bold", pad=14)
 ax.legend(loc="upper left", frameon=True, fancybox=True, shadow=True, fontsize=10)
 ax.grid(True, alpha=0.3)
