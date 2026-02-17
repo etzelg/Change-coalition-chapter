@@ -22,36 +22,34 @@ election_line <- geom_vline(xintercept = 0, linetype = "dashed",
 pct_fmt <- scales::percent_format(accuracy = 0.1)
 
 # ── Plot 2a ──────────────────────────────────────────────────────────────────
-cat("Plot 2a: All parties vs Radicalized...\n")
+# Single trend line; composition changes at election cutoff:
+#   Pre-election : named PRR legislators (prr_leg_pre) + Likud
+#   Post-election: all Religious Zionism (party) + Likud
+cat("Plot 2a: Netanyahu's bloc trend (single line, correct pre/post composition)...\n")
 
-all_wk <- weekly_prop(data) %>%
-  mutate(smooth = rollmean(prop, k = WINDOW, fill = NA, align = "center"),
-         group = "All parties")
+bloc_data <- data %>%
+  filter(
+    (post_election == 0 & (prr_leg_pre | party == "Likud")) |
+    (post_election == 1 & radicalized_group)
+  )
 
-rad_wk <- weekly_prop(data %>% filter(radicalized_group)) %>%
-  mutate(smooth = rollmean(prop, k = WINDOW, fill = NA, align = "center"),
-         group = "Radicalized and Radical Populism\n(Likud + Religious Zionism)")
+rad_wk <- weekly_prop(bloc_data) %>%
+  mutate(smooth = rollmean(prop, k = WINDOW, fill = NA, align = "center"))
 
-ts_data <- bind_rows(all_wk, rad_wk)
-
-colors2a <- c("All parties" = "#7f8c8d",
-              "Radicalized and Radical Populism\n(Likud + Religious Zionism)" = "#e74c3c")
-
-p2a <- ggplot(ts_data, aes(x = week_from_election, color = group)) +
-  geom_point(aes(y = prop), alpha = 0.18, size = 1.2) +
-  geom_line(aes(y = smooth), linewidth = 1.8, na.rm = TRUE) +
+p2a <- ggplot(rad_wk, aes(x = week_from_election)) +
+  geom_point(aes(y = prop), alpha = 0.18, size = 1.2, color = "#c0392b") +
+  geom_line(aes(y = smooth), linewidth = 1.8, color = "#c0392b", na.rm = TRUE) +
   election_line +
-  scale_color_manual(values = colors2a, name = NULL) +
   scale_y_continuous(labels = pct_fmt) +
   labs(x = "Weeks from Election (March 23, 2021)",
        y = "Proportion of Populist Tweets",
-       title = "Populist Rhetoric Over Time:",
-       subtitle = "All Parties vs Radicalized and Radical Populism") +
+       title = "Populism in Netanyahu's Bloc Before and After 2021 Election",
+       caption = "Pre-election: bezalelsm, michalwoldiger, ofir_sofer, oritstrock + Likud\nPost-election: all Religious Zionism + Likud") +
   theme_minimal() +
   theme(plot.title    = element_text(face = "bold", size = 14),
-        plot.subtitle = element_text(size = 12),
         axis.title    = element_text(face = "bold"),
-        legend.position = "top",
+        legend.position = "none",
+        plot.caption  = element_text(size = 8, color = "#666", face = "italic"),
         panel.grid.minor = element_blank())
 
 ggsave("output/plot2a_radicalized_trend.png", p2a, width = 12, height = 6, dpi = 300)

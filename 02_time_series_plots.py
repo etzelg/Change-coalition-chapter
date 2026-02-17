@@ -45,11 +45,17 @@ def smooth(series, w=WINDOW):
     return series.rolling(window=w, center=True, min_periods=1).mean()
 
 # ──────────────────────────────────────────────────────────────────────────────
-# PLOT 2a — Netanyahu's bloc (Likud + Religious Zionism) single trend line
+# PLOT 2a — Netanyahu's bloc — single trend line, composition changes at cutoff
+#   Pre-election : named PRR legislators (prr_leg_pre screen_names) + all Likud
+#   Post-election: all Religious Zionism (party) + all Likud
 # ──────────────────────────────────────────────────────────────────────────────
-print("\nPlot 2a: Netanyahu's bloc trend (single line)...")
+print("\nPlot 2a: Netanyahu's bloc trend (single line, correct pre/post composition)...")
 
-rad_wk = weekly_prop(data[data["radicalized_group"]]).sort_values("week_from_election")
+bloc_mask = (
+    ((data["post_election"] == 0) & (data["prr_leg_pre"] | (data["party"] == "Likud"))) |
+    ((data["post_election"] == 1) & (data["radicalized_group"]))
+)
+rad_wk = weekly_prop(data[bloc_mask]).sort_values("week_from_election")
 
 fig, ax = plt.subplots(figsize=(12, 6))
 

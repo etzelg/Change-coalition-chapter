@@ -158,9 +158,11 @@ likud_pre  <- data %>% filter(post_election==0, party=="Likud") %>%
                 pull(pop) %>% as.numeric()
 likud_post <- data %>% filter(post_election==1, party=="Likud") %>%
                 pull(pop) %>% as.numeric()
-prr_pre    <- data %>% filter(post_election==0, prr_leg_pre)  %>%
+# PRR pre : 4 named legislators (by screen_name, before joining Religious Zionism)
+# PRR post: ALL Religious Zionism legislators (by party)
+prr_pre    <- data %>% filter(post_election==0, prr_leg_pre) %>%
                 pull(pop) %>% as.numeric()
-prr_post   <- data %>% filter(post_election==1, prr_leg_post) %>%
+prr_post   <- data %>% filter(post_election==1, party=="Religious Zionism") %>%
                 pull(pop) %>% as.numeric()
 
 likud_ch <- (mean(likud_post)-mean(likud_pre))/mean(likud_pre)*100
@@ -169,8 +171,10 @@ prr_t    <- run_tests(prr_pre, prr_post)
 
 cat(sprintf("  Likud  pre %.4f  post %.4f  Δ %+.2f%%\n",
             mean(likud_pre), mean(likud_post), likud_ch))
-cat(sprintf("  PRR    pre %.4f  post %.4f  Δ %+.2f%%\n\n",
+cat(sprintf("  PRR    pre %.4f  post %.4f  Δ %+.2f%%\n",
             mean(prr_pre), mean(prr_post), prr_ch))
+cat(sprintf("  (PRR pre n=%d screen_names; PRR post n=%d all Religious Zionism)\n\n",
+            length(prr_pre), length(prr_post)))
 
 p3b <- bar_grouped_plot(
   parties  = c("Likud", "PRR Legislators"),
@@ -180,8 +184,9 @@ p3b <- bar_grouped_plot(
   post_se  = c(se(likud_post),   se(prr_post)),
   title    = "Radicalized and Radical Populism: Likud vs PRR Legislators",
   pct_ch   = c(likud_ch, prr_ch),
-  footnote = paste0("PRR legislators Pre: ", paste(PRR_PRE_NAMES, collapse=", "),
-                    "\nPost adds: rothmar, itamarbengvir"))
+  footnote = paste0(
+    "PRR legislators Pre (by screen name): ", paste(PRR_PRE_NAMES, collapse=", "),
+    "\nPRR legislators Post: all party=Religious Zionism (n=", length(prr_post), ")"))
 ggsave("output/plot3b_comp1_by_group.png", p3b, width=9, height=6, dpi=300)
 cat("✓ plot3b_comp1_by_group.png\n")
 

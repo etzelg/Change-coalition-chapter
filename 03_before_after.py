@@ -196,19 +196,22 @@ likud_pre  = data[(data["post_election"] == 0) & (data["party"] == "Likud")]["po
 likud_post = data[(data["post_election"] == 1) & (data["party"] == "Likud")]["pop"].astype(float)
 
 # PRR legislators — DIFFERENT COMPOSITION pre vs post
+# Pre:  4 named legislators (by screen_name, before joining Religious Zionism)
+# Post: ALL Religious Zionism legislators (by party)
 prr_pre  = data[(data["post_election"] == 0) & data["prr_leg_pre"]]["pop"].astype(float)
-prr_post = data[(data["post_election"] == 1) & data["prr_leg_post"]]["pop"].astype(float)
+prr_post = data[(data["post_election"] == 1) & (data["party"] == "Religious Zionism")]["pop"].astype(float)
 
 likud_ch = (likud_post.mean() - likud_pre.mean()) / likud_pre.mean() * 100
 prr_ch   = (prr_post.mean()   - prr_pre.mean())   / prr_pre.mean()   * 100
 
 prr_tests = run_tests(prr_pre, prr_post)
 
+n_rz_post = len(prr_post)
 print(f"  Likud  pre: {likud_pre.mean():.4f}  post: {likud_post.mean():.4f}  Δ {likud_ch:+.2f}%")
 print(f"  PRR    pre: {prr_pre.mean():.4f}  post: {prr_post.mean():.4f}  Δ {prr_ch:+.2f}%")
 print(f"  PRR t={prr_tests['t']:.4f}  p={prr_tests['t_p']:.2e}  d={prr_tests['cohens_d']:.4f}")
-print(f"  (PRR pre n={len(prr_pre):,} [{', '.join(PRR_PRE_NAMES)}])")
-print(f"  (PRR post n={len(prr_post):,} [{', '.join(PRR_POST_NAMES)}])")
+print(f"  (PRR pre n={len(prr_pre):,} — screen_names: {', '.join(PRR_PRE_NAMES)})")
+print(f"  (PRR post n={n_rz_post:,} — all party==Religious Zionism)")
 
 # ── Plot 3b ──────────────────────────────────────────────────────────────────
 print("\nPlot 3b: Likud vs PRR legislators...")
@@ -224,10 +227,10 @@ bar_grouped(ax,
             title="Radicalized and Radical Populism: Likud vs PRR Legislators",
             pct_changes=[likud_ch, prr_ch])
 
-# footnote explaining the changing group
+# footnote explaining the changing group definition
 fig.text(0.5, 0.01,
-         f"PRR legislators — Pre: {', '.join(PRR_PRE_NAMES)}\n"
-         f"Post adds: rothmar, itamarbengvir",
+         f"PRR legislators Pre: {', '.join(PRR_PRE_NAMES)} (by screen name)\n"
+         f"PRR legislators Post: all party=Religious Zionism (n={n_rz_post:,})",
          ha="center", fontsize=7.5, color="#666",
          style="italic")
 plt.subplots_adjust(bottom=0.12)
